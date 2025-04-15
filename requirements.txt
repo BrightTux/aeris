@@ -1,0 +1,8 @@
+# voice control
+SpeechRecognition[faster-whisper]
+pyaudio
+
+# screen manipulation
+screeninfo
+pygetwindow 
+pyautogui
