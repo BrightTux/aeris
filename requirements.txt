@@ -1,8 +1,13 @@
 # voice control
 SpeechRecognition[faster-whisper]
 pyaudio
+faster-whisper
+pyttsx3
 
 # screen manipulation
 screeninfo
 pygetwindow 
 pyautogui
+
+# LLM 
+dspy
