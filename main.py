@@ -24,6 +24,12 @@ if EXEC_PLATFORM == "Windows":
     import pygetwindow as gw
     import pyautogui
 
+    # audio/volume control
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    from ctypes import cast, POINTER
+
+
+
 # similar sounding wake phrases
 wake_phrases = [
     "hello aeries",
@@ -60,9 +66,17 @@ def turn_on_experience_wall():
     # raise NotImplementedError
 
 
-def set_volume(volume_level):
+def set_volume(volume_level: float):
+    """
+    Volume level in float: 0.0 - 1.0.
+    Example; 0.5=50%
+    """
     print("Running set_volume", volume_level)
-    # raise NotImplementedError
+    if EXEC_PLATFORM == 'Windows':
+        speaker_volume.SetMasterVolumeLevelScalar(volume_level, None)
+    elif EXEC_PLATFORM == 'Linux':
+        volume_level = volume_level * 100.0
+        subprocess.run(["amixer", "sset", "Master", f"{volume_level}%"])
 
 
 def split_screen(screen_number, content_left, content_right):
@@ -85,18 +99,22 @@ def execute_command(command_str: str):
             raise ValueError("Command must be a function call")
 
         func_name = tree.body.func.id
-        args = {}
+
+        args = []
+        for a in tree.body.args:
+            args.append(a.value)
+
+        kargs = {}
         for kw in tree.body.keywords:
-            args[kw.arg] = ast.literal_eval(kw.value)
+            kargs[kw.arg] = ast.literal_eval(kw.value)
 
         if func_name not in COMMAND_REGISTRY:
             raise ValueError(f"Unknown command: {func_name}")
 
-        COMMAND_REGISTRY[func_name](**args)
+        COMMAND_REGISTRY[func_name](*args, **kargs)
 
     except Exception as e:
         print(f"Failed to execute command: {e}")
-
 
 def say(text):
     """
@@ -116,7 +134,7 @@ class Categorize(dspy.Signature):
         "screen control (on/off)",
         "video content control",
         "powerpoint slide content control",
-        "system rest/aeris go to sleep",
+        "system rest/aeris go to sleep",  # black screen
         "experience wall control (on/off/content)",
         "content control on all screensvolume control",
         "split screen control",
@@ -279,6 +297,18 @@ if __name__ == "__main__":
         "split_screen": split_screen,
         "system_sleep": system_sleep,
     }
+
+
+    # volume control
+    # Get the audio devices
+    speaker_devices = AudioUtilities.GetSpeakers()
+
+    # Get the volume interface for the default audio device
+    speaker_interface = speaker_devices.Activate(
+        IAudioEndpointVolume._iid_, 0, None)
+
+    # Cast to IAudioEndpointVolume to manipulate the volume
+    volume = cast(speaker_interface, POINTER(IAudioEndpointVolume))
 
     with open("./voice_assistant_test_cases.json", "r") as f:
         test_cases = json.load(f)
