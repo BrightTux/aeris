@@ -1,0 +1,502 @@
+[
+  {
+    "command": "Turn on the main screen",
+    "intent": "screen control (on/off)",
+    "confidence": 0.83
+  },
+  {
+    "command": "Can you switch off the display?",
+    "intent": "screen control (on/off)",
+    "confidence": 0.95
+  },
+  {
+    "command": "Please power down monitor two",
+    "intent": "screen control (on/off)",
+    "confidence": 1.0
+  },
+  {
+    "command": "Wake up the screens",
+    "intent": "screen control (on/off)",
+    "confidence": 0.84
+  },
+  {
+    "command": "Put all monitors to sleep",
+    "intent": "screen control (on/off)",
+    "confidence": 0.89
+  },
+  {
+    "command": "Restart the screen system",
+    "intent": "screen control (on/off)",
+    "confidence": 0.86
+  },
+  {
+    "command": "Turn the display back on",
+    "intent": "screen control (on/off)",
+    "confidence": 0.94
+  },
+  {
+    "command": "Shut off the monitor",
+    "intent": "screen control (on/off)",
+    "confidence": 0.87
+  },
+  {
+    "command": "Power up all screens",
+    "intent": "screen control (on/off)",
+    "confidence": 0.92
+  },
+  {
+    "command": "Turn screen one off",
+    "intent": "screen control (on/off)",
+    "confidence": 0.98
+  },
+  {
+    "command": "Play the marketing reel on monitor 1",
+    "intent": "video content control",
+    "confidence": 0.86
+  },
+  {
+    "command": "Pause the video on the left screen",
+    "intent": "video content control",
+    "confidence": 0.72
+  },
+  {
+    "command": "Stop the clip playing on screen two",
+    "intent": "video content control",
+    "confidence": 0.74
+  },
+  {
+    "command": "Resume video on the top monitor",
+    "intent": "video content control",
+    "confidence": 1.0
+  },
+  {
+    "command": "Start playing the onboarding video on display three",
+    "intent": "video content control",
+    "confidence": 0.97
+  },
+  {
+    "command": "Pause that clip",
+    "intent": "video content control",
+    "confidence": 0.99
+  },
+  {
+    "command": "Can you stop the video, please?",
+    "intent": "video content control",
+    "confidence": 0.8
+  },
+  {
+    "command": "Put the branding loop on screen 1",
+    "intent": "video content control",
+    "confidence": 0.91
+  },
+  {
+    "command": "Begin the demo video on the main monitor",
+    "intent": "video content control",
+    "confidence": 0.83
+  },
+  {
+    "command": "Turn off the video playback",
+    "intent": "video content control",
+    "confidence": 0.88
+  },
+  {
+    "command": "Start the quarterly report presentation",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.72
+  },
+  {
+    "command": "Put the slides on monitor 2",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.85
+  },
+  {
+    "command": "Launch the sales deck on screen one",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.86
+  },
+  {
+    "command": "Begin the investor presentation",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.7
+  },
+  {
+    "command": "Show the new hire slides on screen 3",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.94
+  },
+  {
+    "command": "Fire up the keynote on display two",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.75
+  },
+  {
+    "command": "Can you open the client pitch?",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.8
+  },
+  {
+    "command": "Put the training slides on the side monitor",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.98
+  },
+  {
+    "command": "Load the campaign review presentation",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.99
+  },
+  {
+    "command": "Run the deck on the primary screen",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.87
+  },
+  {
+    "command": "Go to sleep",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.91
+  },
+  {
+    "command": "Aeris, take a nap",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.76
+  },
+  {
+    "command": "Put the system in rest mode",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.87
+  },
+  {
+    "command": "Hibernate now",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.86
+  },
+  {
+    "command": "Enter low-power mode",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.75
+  },
+  {
+    "command": "Take a rest, Aeris",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.92
+  },
+  {
+    "command": "Deactivate until I return",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.82
+  },
+  {
+    "command": "Sleep time",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.91
+  },
+  {
+    "command": "Aeris, go idle",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.76
+  },
+  {
+    "command": "Power down the system",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.76
+  },
+  {
+    "command": "Turn on the experience wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.7
+  },
+  {
+    "command": "Can you power off the wall display?",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.87
+  },
+  {
+    "command": "Start the welcome animation on the wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.84
+  },
+  {
+    "command": "Switch the wall to demo mode",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.72
+  },
+  {
+    "command": "Put the ambient loop on the experience wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.8
+  },
+  {
+    "command": "Activate the wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.84
+  },
+  {
+    "command": "Shutdown the experience wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.78
+  },
+  {
+    "command": "Load the product showcase on the wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.92
+  },
+  {
+    "command": "Turn the experience wall back on",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.84
+  },
+  {
+    "command": "Pause the content on the wall",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.89
+  },
+  {
+    "command": "Set volume to 50 percent",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.75
+  },
+  {
+    "command": "Lower the volume on all screens",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.86
+  },
+  {
+    "command": "Mute everything",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.9
+  },
+  {
+    "command": "Crank the volume up to 80",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.88
+  },
+  {
+    "command": "Make it louder",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.89
+  },
+  {
+    "command": "Reduce volume by half",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.76
+  },
+  {
+    "command": "Bring the audio down",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.89
+  },
+  {
+    "command": "Set audio level to 30",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.83
+  },
+  {
+    "command": "Silence the system",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.72
+  },
+  {
+    "command": "Increase system volume",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.97
+  },
+  {
+    "command": "Split monitor 1 with browser and code editor",
+    "intent": "split screen control",
+    "confidence": 0.92
+  },
+  {
+    "command": "Put email on the left and Slack on the right",
+    "intent": "split screen control",
+    "confidence": 0.99
+  },
+  {
+    "command": "On screen 2, show terminal and docs side by side",
+    "intent": "split screen control",
+    "confidence": 0.71
+  },
+  {
+    "command": "Divide the display with dashboard and logs",
+    "intent": "split screen control",
+    "confidence": 0.78
+  },
+  {
+    "command": "Split screen: YouTube on one side, Reddit on the other",
+    "intent": "split screen control",
+    "confidence": 0.97
+  },
+  {
+    "command": "Open VS Code and Chrome side-by-side",
+    "intent": "split screen control",
+    "confidence": 0.97
+  },
+  {
+    "command": "Place music player and calendar next to each other",
+    "intent": "split screen control",
+    "confidence": 1.0
+  },
+  {
+    "command": "Use monitor 2 for preview and editor split",
+    "intent": "split screen control",
+    "confidence": 0.79
+  },
+  {
+    "command": "Split with Spotify on left, Notion on right",
+    "intent": "split screen control",
+    "confidence": 0.79
+  },
+  {
+    "command": "Show controls and camera feed on split view",
+    "intent": "split screen control",
+    "confidence": 0.82
+  },
+  {
+    "command": "Turn the second display off, please",
+    "intent": "screen control (on/off)",
+    "confidence": 0.95
+  },
+  {
+    "command": "Can you pause what's playing?",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.76
+  },
+  {
+    "command": "Load the main deck presentation",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.91
+  },
+  {
+    "command": "Aeris, rest now",
+    "intent": "screen control (on/off)",
+    "confidence": 0.85
+  },
+  {
+    "command": "Mute all audio",
+    "intent": "video content control",
+    "confidence": 0.74
+  },
+  {
+    "command": "Display split with terminal and monitor",
+    "intent": "video content control",
+    "confidence": 0.72
+  },
+  {
+    "command": "Play launch video on left screen",
+    "intent": "video content control",
+    "confidence": 0.71
+  },
+  {
+    "command": "Wake the system up",
+    "intent": "screen control (on/off)",
+    "confidence": 0.91
+  },
+  {
+    "command": "Put content loop on all screens",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.71
+  },
+  {
+    "command": "Turn wall display content on",
+    "intent": "video content control",
+    "confidence": 0.9
+  },
+  {
+    "command": "Volume to 75",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.84
+  },
+  {
+    "command": "System off",
+    "intent": "split screen control",
+    "confidence": 0.87
+  },
+  {
+    "command": "Go quiet",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.9
+  },
+  {
+    "command": "Split display: calendar and clock",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.71
+  },
+  {
+    "command": "Restart the monitors",
+    "intent": "experience wall control (on/off/content)",
+    "confidence": 0.94
+  },
+  {
+    "command": "Play project video, monitor one",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.71
+  },
+  {
+    "command": "Experience wall on",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.83
+  },
+  {
+    "command": "Lower system audio",
+    "intent": "screen control (on/off)",
+    "confidence": 0.9
+  },
+  {
+    "command": "Put the video on pause",
+    "intent": "powerpoint slide content control",
+    "confidence": 0.84
+  },
+  {
+    "command": "Start pitch deck on left display",
+    "intent": "system rest/aeris go to sleep",
+    "confidence": 0.95
+  },
+  {
+    "command": "Uhh, can you play that video now?",
+    "intent": "split screen control",
+    "confidence": 0.94
+  },
+  {
+    "command": "Hey, turn off the wall thing",
+    "intent": "content control on all screensvolume control",
+    "confidence": 0.82
+  },
+  {
+    "command": "Aeris, um, go to sleep",
+    "intent": "split screen control",
+    "confidence": 0.91
+  },
+  {
+    "command": "Yeah, start the video on the side screen",
+    "intent": "video content control",
+    "confidence": 0.88
+  },
+  {
+    "command": "I'd like to see the presentation",
+    "intent": "video content control",
+    "confidence": 0.77
+  },
+  {
+    "command": "Just, like, stop the video",
+    "intent": "split screen control",
+    "confidence": 0.85
+  },
+  {
+    "command": "Put the thing on screen two \u2014 the pitch",
+    "intent": "split screen control",
+    "confidence": 0.7
+  },
+  {
+    "command": "Make it louder please",
+    "intent": "screen control (on/off)",
+    "confidence": 0.82
+  },
+  {
+    "command": "Uh, screen off I guess?",
+    "intent": "split screen control",
+    "confidence": 0.71
+  },
+  {
+    "command": "Hey, can we split the screen with browser and notes?",
+    "intent": "video content control",
+    "confidence": 0.93
+  }
+]

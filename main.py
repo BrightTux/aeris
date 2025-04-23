@@ -3,6 +3,7 @@
 import ast
 import atexit
 import configparser
+import json
 import os
 import platform
 import subprocess
@@ -33,35 +34,47 @@ wake_phrases = [
 
 
 def play_video(video_name, screen_number):
-    raise NotImplementedError
+    print("Running play_video", video_name, screen_number)
+    # raise NotImplementedError
 
 
 def pause_video(screen_number):
-    raise NotImplementedError
+    print("Running pause_video", screen_number)
+    # raise NotImplementedError
 
 
 def stop_video(screen_number):
-    raise NotImplementedError
+    print("Running stop_video", screen_number)
+    # raise NotImplementedError
 
 
 def control_presentation(presentation_name, screen_number):
-    raise NotImplementedError
+    print("Running control_presentation", presentation_name, screen_number)
+    # raise NotImplementedError
 
 
 def turn_on_experience_wall():
-    raise NotImplementedError
+    print(
+        "Running turn_on_experience_wall",
+    )
+    # raise NotImplementedError
 
 
 def set_volume(volume_level):
-    raise NotImplementedError
+    print("Running set_volume", volume_level)
+    # raise NotImplementedError
 
 
 def split_screen(screen_number, content_left, content_right):
-    raise NotImplementedError
+    print("Running split_screen", content_left, content_right)
+    # raise NotImplementedError
 
 
 def system_sleep():
-    raise NotImplementedError
+    print(
+        "Running system_sleep",
+    )
+    # raise NotImplementedError
 
 
 def execute_command(command_str: str):
@@ -141,7 +154,9 @@ class CommandControl(dspy.Signature):
 
 def process_command(command):
     intent_res = classify(command=command)
-    print(intent_res.intent, intent_res.confidence)
+    print(
+        f"Received: {command}. Predicted: {intent_res.intent}, {intent_res.confidence}"
+    )
 
     # now, based on the intent of the command, determine what commands to run.
     command_res = get_command_actions(
@@ -149,9 +164,10 @@ def process_command(command):
         request=command,
     )
 
-    if command_res.confidence <= config["voice_control"]["confidence_score"]:
+    if command_res.confidence <= float(config["voice_control"]["confidence"]):
         return "Failed to process command, low confidence"
 
+    print(f"Generated command: {command_res}")
     # if it passes the conf threshold
     execute_command(command_res.command)
 
@@ -263,6 +279,13 @@ if __name__ == "__main__":
         "split_screen": split_screen,
         "system_sleep": system_sleep,
     }
+
+    with open("./voice_assistant_test_cases.json", "r") as f:
+        test_cases = json.load(f)
+
+    for tc in test_cases:
+        print("input: ", tc)
+        process_command(tc["command"])
 
     # tts_engine = pyttsx3.init()
     # voices = tts_engine.getProperty('voices')       #getting details of current voice
