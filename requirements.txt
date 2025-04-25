@@ -3,8 +3,9 @@ SpeechRecognition[faster-whisper]
 pyaudio
 faster-whisper
 pyttsx3
+soundfile
 
-# screen manipulation
+# screen manipulation, might not need these anymore
 screeninfo
 pygetwindow
 pyautogui
@@ -15,5 +16,9 @@ dspy
 # volume control
 pycaw
 
-# UI related
-pyqt5
+# frontend
+flask
+opencv-python
+
+python-pptx
+pillow

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AERIS Video Controller</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .panel { margin: 20px; padding: 10px; border: 1px solid #aaa; display: inline-block; width: 22%; vertical-align: top; }
+        input[type="text"] { width: 100%; }
+        button { margin: 5px 2px; }
+    </style>
+</head>
+<body>
+    <h1>AERIS Split-Screen Controller</h1>
+
+    <h3>Voice Assistant Logs</h3>
+    <div style="max-height: 300px; overflow-y: scroll; background: #f0f0f0; padding: 10px; font-family: monospace; border: 1px solid #ccc;">
+        <div id="log-container">Loading logs...</div>
+    </div>
+
+    {% for panel in panels %}
+    <div class="panel">
+        <h3>Panel {{ loop.index }}</h3>
+        <p>Current File: <b>{{ panel.filepath if panel.filepath else "None" }}</b></p>
+        <form method="POST" action="/panel/{{ loop.index0 }}/browse">
+            <button type="submit">Browse for Video</button>
+        </form>
+        <form method="POST" action="/panel/{{ loop.index0 }}/upload_pptx">
+          <button type="submit">Load PowerPoint</button>
+        </form>
+        <form method="POST" action="/panel/{{ loop.index0 }}/play"><button>Play</button></form>
+        <form method="POST" action="/panel/{{ loop.index0 }}/pause"><button>Pause</button></form>
+        <form method="POST" action="/panel/{{ loop.index0 }}/stop"><button>Stop</button></form>
+        <form method="POST" action="/panel/{{ loop.index0 }}/clear_slides"><button>Clear Slides</button></form>
+    </div>
+    {% endfor %}
+
+
+    <script>
+        function fetchLogs() {
+            fetch("/logs")
+                .then(response => response.text())
+                .then(data => {
+                    document.getElementById("log-container").innerHTML = data;
+                });
+        }
+
+        fetchLogs();                // Initial fetch
+        setInterval(fetchLogs, 5000); // Refresh every 5 sec
+
+        function scrollToBottom() {
+            const logContainer = document.getElementById('log-container');
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Example: Automatically add a log message every 2 seconds
+        setInterval(() => {
+            addLog('Log message at ' + new Date().toLocaleTimeString());
+        }, 1000);
+    </script>
+
+</body>
+</html>
