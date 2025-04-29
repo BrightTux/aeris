@@ -1,7 +1,6 @@
 # voice control
 SpeechRecognition[faster-whisper]
 pyaudio
-faster-whisper
 pyttsx3
 soundfile
 

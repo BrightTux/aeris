@@ -57,12 +57,18 @@ voice_logger = logging.getLogger("voice_assistant")
 
 def format_log_message(level, message):
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S")  # Format the timestamp
-    return f"[{timestamp}] [{level}] {message}"
+    return f"[{timestamp}] [{level}] *{message}"
 
 def log_to_memory(message, level='INFO'):
-    message = format_log_message(level, message)
+    formatted_message = format_log_message(level, message)
     with log_lock:
-        log_storage.append(message)
+        try:
+            previous_msg = log_storage[-1].split('*')[-1]
+            if previous_msg == message:
+                return
+        except IndexError:
+            pass  # when launched, the deque is empty
+        log_storage.append(formatted_message)
 
 def write_logs_to_file():
     log_file = "voice_assistant.log"
@@ -83,7 +89,8 @@ class MediaPanel:
         self.cap = None
         self.playing = False
         self.video_paused = False
-        self.frame = np.zeros((canvas_height, 1, 3), dtype=np.uint8)
+        self.frame = np.zeros((canvas_height, 1, 4), dtype=np.uint8)
+        self.width = None
         self.lock = threading.Lock()
 
         self.slides = []
@@ -111,6 +118,8 @@ class MediaPanel:
     def stop(self):
         with self.lock:
             self.playing = False
+            width = self.width or 1
+            self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -126,7 +135,8 @@ class MediaPanel:
                     self.slide_index = (self.slide_index + 1) % len(self.slides)
                     self.last_slide_time = now
                 img = cv2.imread(self.slides[self.slide_index])
-                self.frame = cv2.resize(img, (width, canvas_height))
+                rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                self.frame = cv2.resize(rgba_image, (width, canvas_height))
 
             elif self.playing and self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()
@@ -135,14 +145,16 @@ class MediaPanel:
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = self.cap.read()
                 if ret:
-                    frame = cv2.resize(frame, (width, canvas_height))
-                    self.frame = frame
+                    rgba_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
+                    rgba_frame = cv2.resize(rgba_frame, (width, canvas_height))
+                    self.frame = rgba_frame
                 else:
-                    self.frame = np.zeros((canvas_height, width, 3), dtype=np.uint8)
+                    self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
+                    self.width = width
             elif self.video_paused:
                 self.frame = self.frame
             else:
-                self.frame = np.zeros((canvas_height, width, 3), dtype=np.uint8)
+                self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
 
 
     def set_slides(self, image_paths, duration=5):
@@ -201,21 +213,50 @@ class CommandControl(dspy.Signature):
     )  # For downstream error handling or routing
 
 # Initialize 3 panels
-media_panels = [MediaPanel(i) for i in range(3)]
+media_panels = [MediaPanel(i) for i in range(4)]
+experience_wall = media_panels[-1]
 
 # Background thread: single OpenCV window to display all panels
 def display_loop():
     cv2.namedWindow("Media Dashboard", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Media Dashboard", canvas_width, canvas_height)
 
+    # Function to overlay frame2 over frame1
+    def overlay_frames(frame1, frame2):
+        # Ensure both frames are the same size
+        if frame1.shape != frame2.shape:
+            raise ValueError("Frames must be the same size")
+
+        # Create a copy of frame1 to modify
+        combined_frame = frame1.copy()
+
+        # Check where frame1 is transparent
+        alpha1 = frame1[:, :, 3]  # Get the alpha channel of frame1
+        mask = alpha1 == 0  # Create a mask where frame1 is transparent
+
+        # Overlay frame2 where frame1 is transparent
+        combined_frame[mask] = frame2[mask]  # Set pixels from frame2 where frame1 is transparent
+
+        return combined_frame
+
     while True:
+        # first, we fill it with the experience wall content
+        experience_wall.update_frame(canvas_width)
+        exp_frames = experience_wall.frame
+
         total_ratio = sum(width_ratios)
         panel_widths = [int(canvas_width * (r / total_ratio)) for r in width_ratios]
         frames = []
-        for i, panel in enumerate(media_panels):
+        for i, panel in enumerate(media_panels[:-1]):
             panel.update_frame(panel_widths[i])
             frames.append(panel.frame)
-        canvas = np.hstack(frames)
+        panel_canvas = np.hstack(frames)
+
+        # just to make sure the frames are same size
+        panel_canvas = cv2.resize(panel_canvas, (canvas_width, canvas_height))
+        exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
+        canvas = overlay_frames(panel_canvas, exp_frames)
+
         cv2.imshow("Media Dashboard", canvas)
         if cv2.waitKey(30) & 0xFF == ord('q'):
             break
@@ -223,10 +264,26 @@ def display_loop():
 
 threading.Thread(target=display_loop, daemon=True).start()
 
+def log_function_call(func):
+    def wrapper(*args, **kwargs):
+        # Log the function name and arguments
+        print(f"Calling function: {func.__name__}")
+        print(f"Arguments: {args}, Keyword Arguments: {kwargs}")
+        
+        # Call the original function
+        result = func(*args, **kwargs)
+        
+        # Optionally log the result
+        print(f"Function {func.__name__} returned: {result}")
+        
+        return result
+    return wrapper
+
 def remove_punctuation(text):
     translator = str.maketrans('', '', string.punctuation)
     return text.translate(translator)
 
+@log_function_call
 def play_video(video_name="", panel_index=0):
     config = configparser.ConfigParser()
     config.read("config.ini")
@@ -261,10 +318,13 @@ def control_presentation():
 
 def experience_wall_control(action_name):
     raise NotImplementedError
+
 def set_volume():
     raise NotImplementedError
+
 def system_sleep():
-    raise NotImplementedError
+    for p in media_panels:
+        p.stop()
 
 
 class VoiceAssistant:
@@ -292,7 +352,7 @@ class VoiceAssistant:
 
         # dictionary of video files
         self.video_dict = self.config["presentation"]
-        self.command_registry: command_registry
+        self.command_registry = command_registry
 
         self.recognizer = sr.Recognizer()
         self.mic_index = int(self.config["voice_control"]["mic_index"])
@@ -326,40 +386,63 @@ class VoiceAssistant:
         except Exception as e:
             print(f"Failed to execute command: {e}")
 
+    def verify_user(self,):
+        return True
+        audio = self.recognizer.listen(source)
+        transcript = self.recognizer.recognize_faster_whisper(audio)
+        self.speak("Hello, identification please")
+        raise NotImplementedError
+
+    def unauthorized_access(self):
+        self.speak("False identification, I do not recognize you.")
+
+
     def listen_for_wake_phrase(self, source):
-        try:
-            self.log_to_memory(f"Listening for wake phrases")
-            wake_phrases = [
-                "hello aeries",
-                "hello aries",
-                "hello iris",
-                "hello aeris",
-                "hello i miss",
-                "hello irene",
-                "hello ivy",
-                "hello i mean",
-                "hello im reese",
-                "hello ill reach",
-                "hello",  # use for testing
-            ]
-            audio = self.recognizer.listen(source)
-            transcript = self.recognizer.recognize_faster_whisper(audio)
-            self.log_to_memory(f"You said: {transcript}")
-            transcript = remove_punctuation(transcript)
+        self.log_to_memory(f"Listening for wake phrases")
+        wake_phrases = [
+            "hello aeries",
+            "hello aries",
+            "hello iris",
+            "hello aeris",
+            "hello i miss",
+            "hello irene",
+            "hello ivy",
+            "hello i mean",
+            "hello im reese",
+            "hello ill reach",
+            "hello",  # use for testing
+        ]
+        while True:
+            try:
+                audio = self.recognizer.listen(source)
+                transcript = self.recognizer.recognize_faster_whisper(audio)
+                # transcript = self.recognizer.recognize_google(audio)
+                if self.is_valid_command(transcript):
+                    self.log_to_memory(f"You said: {transcript}")
+                transcript = remove_punctuation(transcript)
 
-            if any(w.lower() in transcript.lower() for w in wake_phrases):
-                self.log_to_memory("Wake word detected. Listening for command...")
-                self.try_to_recognize(source)
-        except Exception as e:
-            self.log_to_memory(e, level="ERROR")
-            raise e
+                if any(w.lower() in transcript.lower() for w in wake_phrases):
+                    self.log_to_memory("Wake word detected. Listening for command...")
+                    validated = self.verify_user(source)
+                    if validated:
+                        self.try_to_recognize(source)
+                    else:
+                        self.unauthorized_access()
+            except sr.UnknownValueError:
+                self.log_to_memory("Didn't catch any sound.", level="INFO")
+            except sr.RequestError as e:
+                self.log_to_memory(f"Recognition error: {e}", level="ERROR")
+                self.speak("Recognition error.")
+            except Exception as e:
+                self.log_to_memory(f"Unhandled error: {e}", level="ERROR")
+                raise e
 
+    def is_valid_command(self, message):
+        """Check if the log message is valid."""
+        return message and message.strip() not in ['', '...', '... ... ... ...']
 
     def try_to_recognize(self, source, repeated=False):
 
-        def is_valid_command(message):
-            """Check if the log message is valid."""
-            return message and message.strip() not in ['', '...', '... ... ... ...']
 
         self.recognizer.adjust_for_ambient_noise(source, duration=1)
         self.recognizer.pause_threshold = 2  # add some extra time to allow brain to process more
@@ -369,9 +452,9 @@ class VoiceAssistant:
         self.log_to_memory("You may speak your command now.")
         audio = self.recognizer.listen(source, )
         command = self.recognizer.recognize_faster_whisper(audio).lower()
+        self.log_to_memory(f"Command received: {command}")
 
-        if is_valid_command(command):
-            self.log_to_memory(f"Command received: {command}")
+        if self.is_valid_command(command):
             command_res = self.get_command_actions(
                 request=command,
             )
@@ -392,18 +475,7 @@ class VoiceAssistant:
                 self.log_to_memory("Calibrating for ambient noise...")
                 self.recognizer.adjust_for_ambient_noise(source, duration=2)
                 self.log_to_memory("Always listening for wake word...")
-
-                while True:
-                    try:
-                        self.listen_for_wake_phrase(source)
-                    except sr.UnknownValueError:
-                        self.log_to_memory("Didn't catch that.", level="WARNING")
-                        self.speak("Didn't catch that.")
-                    except sr.RequestError as e:
-                        self.log_to_memory(f"Recognition error: {e}", level="ERROR")
-                        self.speak("Recognition error.")
-                    except Exception as e:
-                        self.log_to_memory(f"Unhandled error: {e}", level="ERROR")
+                self.listen_for_wake_phrase(source)
         except Exception as mic_error:
             self.log_to_memory(f"Microphone initialization failed: {mic_error}", level="ERROR")
 
