@@ -96,6 +96,7 @@ class MediaPanel:
         self.slides = []
         self.slide_index = 0
         self.slide_duration = 5
+        self.fade_duration = 1
         self.last_slide_time = time.time()
 
     def set_video(self, path):
@@ -132,11 +133,36 @@ class MediaPanel:
             if self.slides:
                 now = time.time()
                 if now - self.last_slide_time > self.slide_duration:
-                    self.slide_index = (self.slide_index + 1) % len(self.slides)
+                    # Update slide index and last slide time
                     self.last_slide_time = now
-                img = cv2.imread(self.slides[self.slide_index])
-                rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-                self.frame = cv2.resize(rgba_image, (width, canvas_height))
+                    next_slide_index = (self.slide_index + 1) % len(self.slides)
+
+                    # Load current and next images
+                    current_img = cv2.imread(self.slides[self.slide_index])
+                    next_img = cv2.imread(self.slides[next_slide_index])
+
+                    # Convert images to BGRA
+                    current_rgba = cv2.cvtColor(current_img, cv2.COLOR_BGR2BGRA)
+                    next_rgba = cv2.cvtColor(next_img, cv2.COLOR_BGR2BGRA)
+
+                    # Resize images to fit the canvas
+                    current_rgba = cv2.resize(current_rgba, (width, canvas_height))
+                    next_rgba = cv2.resize(next_rgba, (width, canvas_height))
+
+                    # Fade out current image and fade in next image
+                    for alpha in np.linspace(1, 0, int(self.fade_duration * 30)):  # Assuming 30 FPS
+                        # Create a blended image
+                        blended = cv2.addWeighted(current_rgba, alpha, next_rgba, 1 - alpha, 0)
+                        self.frame = blended
+
+                    # Update slide index after the transition
+                    self.slide_index = next_slide_index
+
+                else:
+                    # Display the current slide
+                    img = cv2.imread(self.slides[self.slide_index])
+                    rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                    self.frame = cv2.resize(rgba_image, (width, canvas_height))
 
             elif self.playing and self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()
@@ -221,6 +247,38 @@ def display_loop():
     cv2.namedWindow("Media Dashboard", cv2.WINDOW_NORMAL)
     cv2.resizeWindow("Media Dashboard", canvas_width, canvas_height)
 
+    # Move display window to the target monitor
+    # Function to get the position of the monitor with the specified name
+    def get_monitor_position(monitor_name):
+        for monitor in get_monitors():
+            print(f'DEBUG: {monitor=}, {monitor_name=}, {monitor.name==monitor_name}')
+            if monitor_name == monitor.name:
+                return (monitor.x, monitor.y, monitor.width, monitor.height)
+        return None
+
+    # Get the position of the HDMI-1 monitor
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+
+    print(config['screen']['target'])
+    target_monitor = get_monitor_position(config['screen']['target'])
+
+    if target_monitor is None:
+        print("target monitor not found.")
+    else:
+        # Get the window with the title "abc"
+        try:
+            window = gw.getWindowsWithTitle("Media Dashboard")[0]  # Get the first window with the title
+            
+            # Move the window to the HDMI-1 monitor
+            window.moveTo(target_monitor[0], target_monitor[1])
+            window.maximize()
+
+            print(f"Moved window '{window.title}' to HDMI-1 monitor.")
+        except IndexError:
+            print("Window with title 'Media Dashboard' not found.")
+
+
     # Function to overlay frame2 over frame1
     def overlay_frames(frame1, frame2):
         # Ensure both frames are the same size
@@ -258,7 +316,8 @@ def display_loop():
         canvas = overlay_frames(panel_canvas, exp_frames)
 
         cv2.imshow("Media Dashboard", canvas)
-        if cv2.waitKey(30) & 0xFF == ord('q'):
+        # Check for 'Ctrl + Q' key press
+        if cv2.waitKey(33) & 0xFF == ord('q'):
             break
     cv2.destroyAllWindows()
 
@@ -423,11 +482,7 @@ class VoiceAssistant:
 
                 if any(w.lower() in transcript.lower() for w in wake_phrases):
                     self.log_to_memory("Wake word detected. Listening for command...")
-                    validated = self.verify_user(source)
-                    if validated:
-                        self.try_to_recognize(source)
-                    else:
-                        self.unauthorized_access()
+                    self.try_to_recognize(source)
             except sr.UnknownValueError:
                 self.log_to_memory("Didn't catch any sound.", level="INFO")
             except sr.RequestError as e:
@@ -442,10 +497,12 @@ class VoiceAssistant:
         return message and message.strip() not in ['', '...', '... ... ... ...']
 
     def try_to_recognize(self, source, repeated=False):
-
-
         self.recognizer.adjust_for_ambient_noise(source, duration=1)
         self.recognizer.pause_threshold = 2  # add some extra time to allow brain to process more
+        if not self.verify_user(source):
+            self.unauthorized_access()
+            return
+
         if not repeated:
             self.speak('Hello, you have called for me. How can i help you?')
         
@@ -604,8 +661,30 @@ def upload_pptx(panel_id):
     root.destroy()
 
     if file_path:
-        slide_images = convert_pptx_to_images_pure(file_path)
+        # slide_images = convert_pptx_to_images_pure(file_path)
+        slide_images = convert_pptx_to_images(file_path)
         media_panels[panel_id].set_slides(slide_images, duration=5)  # set default time here
+
+    return redirect(url_for("index"))
+
+@app.route("/panel/<int:panel_id>/upload_images", methods=["POST"])
+def upload_images(panel_id):
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    folder_path = filedialog.askdirectory()  # Ask for a directory instead of a file
+    root.destroy()
+
+    if folder_path:
+        # Get a list of image files in the selected directory
+        image_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')  # Add more extensions if needed
+        slide_images = [
+            os.path.join(folder_path, f) for f in os.listdir(folder_path)
+            if f.lower().endswith(image_extensions)
+        ]
+
+        media_panels[panel_id].set_slides(slide_images, duration=5)  # Set default time here
 
     return redirect(url_for("index"))
 
