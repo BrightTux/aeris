@@ -38,8 +38,10 @@ if EXEC_PLATFORM == "Windows":
     import pyautogui
 
     # audio/volume control
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
     from ctypes import cast, POINTER
+    from comtypes import CLSCTX_ALL
+    from comtypes.client import CreateObject
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
 app = Flask(__name__)
 
@@ -191,20 +193,6 @@ class MediaPanel:
         self.last_slide_time = time.time()
 
 
-class Categorize(dspy.Signature):
-    """Classify the intent of the command."""
-
-    command: str = dspy.InputField()
-    intent: Literal[
-        "screen control (on/off)",
-        "video content control",
-        "powerpoint slide content control",
-        "system rest/aeris go to sleep",  # black screen
-        "experience wall control (on/off/content)",
-        "content control on all screensvolume control",
-    ] = dspy.OutputField()
-    confidence: float = dspy.OutputField()
-
 
 class CommandControl(dspy.Signature):
     """Determine the command details based on the input request and intention.
@@ -212,13 +200,14 @@ class CommandControl(dspy.Signature):
     Input:
     - request: actual request from the user
     Output:
+    # IMPORTANT:
     # Here are the valid responses:
-    - play_video(video_name, screen_number)
-    - pause_video(screen_number)
-    - stop_video(screen_number)
+    - play_video(video_name: str, screen_number :int)
+    - pause_video(screen_number: int)
+    - stop_video(screen_number: int)
     - control_presentation(presentation_name, screen_number)
-    - experience_wall_control(action)  # valid actions: on/off
-    - set_volume(volume_level)
+    - experience_wall_control(action: str)  # valid actions: on/off
+    - set_volume(volume_level: float)  # 0.0 to 1.0 value for volume_level
     - system_sleep()
 
     [PRIORITY] Try your best to match file names and screen numbers. 
@@ -231,12 +220,10 @@ class CommandControl(dspy.Signature):
     pi_tech_video
     gat_video
 
-    ## Valid screen number are (1,2,3). However, please map it to (0, 1 and 2.)
+    # Valid screen number are (1,2,3). However, please map it to (0, 1, 2)
 
-    # Experience Wall Control:
-    ## Valid actions: on/off
-
-   
+    ## Output format:
+    The output should only contain the function name and positional args.
     """
     request: str = dspy.InputField()
 
@@ -350,7 +337,7 @@ def remove_punctuation(text):
     return text.translate(translator)
 
 @log_function_call
-def play_video(video_name="", panel_index=0):
+def play_video(video_name="", panel_index=0, *args, **kwargs):
     config = configparser.ConfigParser()
     config.read("config.ini")
 
@@ -365,33 +352,48 @@ def play_video(video_name="", panel_index=0):
     else:
         media_panels[panel_index].play()
 
-def pause_video(panel_index=0):
+def pause_video(panel_index=0, *args, **kwargs):
     if panel_index == 'all':
         for p in media_panels:
             p.pause()
     else:
         media_panels[panel_index].pause()
 
-def stop_video(panel_index=0):
+def stop_video(panel_index=0, *args, **kwargs):
     if panel_index == 'all':
         for p in media_panels:
             p.stop()
     else:
         media_panels[panel_index].stop()
 
-def control_presentation():
+def control_presentation(*args, **kwargs):
     raise NotImplementedError
 
-def experience_wall_control(action):
+def experience_wall_control(action, *args, **kwargs):
     if action.lower() == 'on':
         play_video(video_name='experience_wall', panel_index=-1)
     elif action.lower() == 'off':
         stop_video(panel_index=-1)
 
-def set_volume():
-    raise NotImplementedError
+def set_volume(volume_level, *args, **kwargs):
+    # Ensure volume_level is between 0.0 and 1.0
+    if not (0.0 <= volume_level <= 1.0):
+        raise ValueError("Volume level must be between 0.0 and 1.0")
 
-def system_sleep():
+    # Get the audio devices
+    speaker_devices = AudioUtilities.GetSpeakers()
+
+    # Get the volume interface for the default audio device
+    speaker_interface = speaker_devices.Activate(
+        IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+
+    # Cast to IAudioEndpointVolume to manipulate the volume
+    volume = cast(speaker_interface, POINTER(IAudioEndpointVolume))
+
+    # Set the master volume level
+    volume.SetMasterVolumeLevelScalar(volume_level, None)
+
+def system_sleep(*args, **kwargs):
     for p in media_panels:
         p.stop()
 
@@ -411,7 +413,6 @@ class VoiceAssistant:
             api_key=""
         )
         dspy.configure(lm=self.lm)
-        self.classify = dspy.Predict(Categorize)
         self.get_command_actions = dspy.ChainOfThought(CommandControl)
 
         # voice engine
@@ -453,8 +454,8 @@ class VoiceAssistant:
             self.command_registry[func_name](*args, **kargs)
 
         except Exception as e:
-            print(f"Failed to execute command: {e}")
-            print(traceback.print_exc)
+            print(f"Failed to execute command: {e}, Received: {command_str=}")
+            print(traceback.print_exc())
 
     def verify_user(self, source):
         return True

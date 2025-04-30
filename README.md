@@ -1,20 +1,33 @@
+# AERIS
+
+0. Setup: Update the config.ini file
+- Make sure to update the:
+    * target screen name
+    * presentation video paths
+    * The mic_index (0) is used by default -- window's default mic
+    * The rest of the configuration file can be left as it is.
+
+1. To run: double click the aeris.bat file
+2. Edge browser should launch, if it does not, open any browser and head to '127.0.0.1:5000' to see the dashboard.
+
+------
+
+## Development logs
+
 TODO:
 - [ ] volume control
-- [ ] powerpoint control 
-- [ ] rewind video?  # not sure
-- [ ] rewind to minute?  # not sure
+- [ ] fix faster whisper, currently fallback to google
+- [ ] sometimes aeris is triggered twice
 
-
-TESTING:
-- [ ] powerpoint - extraction (testing)
-- [ ] pause all content
-
-
-QUESTIONS:
-1. do we need the replay content without stopping/time frame command?
-2. set screen to display live feed -> of what? where's the source
-3. enable split screen -> do we need this? the screen is currently split to 3, and can be played as a single screen
-4. synchronize all screen -> to what?
 
 TEST:
-1. pip install whisper-live
+1. pip install whisper-live --> has issue with installing ffmpeg, av
+
+
+ERROR list:
+Failed to execute command: 'Name' object has no attribute 'value', Received: command_str='pause_video(all_videos, all_screens)'
+Traceback (most recent call last):
+  File "C:\Users\gca20\Documents\voice_ai\app.py", line 449, in execute_command
+    args.append(a.value)
+                ^^^^^^^
+AttributeError: 'Name' object has no attribute 'value'
