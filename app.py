@@ -16,6 +16,7 @@ import speech_recognition as sr
 import subprocess
 import tempfile
 import threading
+import traceback
 import time
 import string
 
@@ -30,6 +31,8 @@ from tkinter import Tk, filedialog
 from typing import Literal, Callable
 
 EXEC_PLATFORM = platform.system()
+USE_GOOGLE = True
+
 if EXEC_PLATFORM == "Windows":
     import pygetwindow as gw
     import pyautogui
@@ -44,8 +47,6 @@ app = Flask(__name__)
 width_ratios = [1, 1, 1]  # Can be adjusted dynamically if needed
 canvas_width = 3064
 canvas_height = 672
-canvas_width = 800
-canvas_height = 200
 
 # In-memory log storage
 log_storage = deque(maxlen=20)
@@ -221,15 +222,21 @@ class CommandControl(dspy.Signature):
     - system_sleep()
 
     [PRIORITY] Try your best to match file names and screen numbers. 
-    [FALLBACK] If there's no matching file names, try using similar sounding phonetics.
+    [FALLBACK] If there's no matching file names, try using similar sounding phonetics to match the valid video files names below.
 
-    # Valid video files names:
+    # Video Controls:
+    ## Valid video files names:
     gca_video
     cw_aero_video
     pi_tech_video
     gat_video
 
-    # Valid screen number are (1,2,3). However, please map it to (0, 1 and 2.)
+    ## Valid screen number are (1,2,3). However, please map it to (0, 1 and 2.)
+
+    # Experience Wall Control:
+    ## Valid actions: on/off
+
+   
     """
     request: str = dspy.InputField()
 
@@ -375,8 +382,11 @@ def stop_video(panel_index=0):
 def control_presentation():
     raise NotImplementedError
 
-def experience_wall_control(action_name):
-    raise NotImplementedError
+def experience_wall_control(action):
+    if action.lower() == 'on':
+        play_video(video_name='experience_wall', panel_index=-1)
+    elif action.lower() == 'off':
+        stop_video(panel_index=-1)
 
 def set_volume():
     raise NotImplementedError
@@ -394,7 +404,7 @@ class VoiceAssistant:
         self.config.read("config.ini")
 
         # DSPY related
-        ollama_server_url = self.config["llm"]["endpoint_test"]
+        ollama_server_url = self.config["llm"]["endpoint_prod"]
         self.lm = dspy.LM(
             self.config["llm"]["model"], 
             api_base=ollama_server_url, 
@@ -444,11 +454,15 @@ class VoiceAssistant:
 
         except Exception as e:
             print(f"Failed to execute command: {e}")
+            print(traceback.print_exc)
 
-    def verify_user(self,):
+    def verify_user(self, source):
         return True
         audio = self.recognizer.listen(source)
-        transcript = self.recognizer.recognize_faster_whisper(audio)
+        if USE_GOOGLE:
+            transcript = self.recognizer.recognize_google(audio)
+        else:
+            transcript = self.recognizer.recognize_faster_whisper(audio)
         self.speak("Hello, identification please")
         raise NotImplementedError
 
@@ -474,8 +488,11 @@ class VoiceAssistant:
         while True:
             try:
                 audio = self.recognizer.listen(source)
-                transcript = self.recognizer.recognize_faster_whisper(audio)
-                # transcript = self.recognizer.recognize_google(audio)
+                if USE_GOOGLE:
+                    transcript = self.recognizer.recognize_google(audio)
+                else:
+                    transcript = self.recognizer.recognize_faster_whisper(audio)
+
                 if self.is_valid_command(transcript):
                     self.log_to_memory(f"You said: {transcript}")
                 transcript = remove_punctuation(transcript)
@@ -508,7 +525,11 @@ class VoiceAssistant:
         
         self.log_to_memory("You may speak your command now.")
         audio = self.recognizer.listen(source, )
-        command = self.recognizer.recognize_faster_whisper(audio).lower()
+        if USE_GOOGLE:
+            command = self.recognizer.recognize_google(audio)
+        else:
+            command = self.recognizer.recognize_faster_whisper(audio)
+
         self.log_to_memory(f"Command received: {command}")
 
         if self.is_valid_command(command):
@@ -618,7 +639,8 @@ def convert_pptx_to_images_pure(pptx_path, width=1280, height=720) -> list[str]:
 
 @app.route("/")
 def index():
-    return render_template("dashboard.html", panels=media_panels)
+    config = configparser.ConfigParser()
+    return render_template("dashboard.html", panels=media_panels, config=config)
 
 
 @app.route("/panel/<int:panel_id>/browse", methods=["POST"])
@@ -704,7 +726,6 @@ def view_logs():
     return "<br>".join(line.strip() for line in lines)
 
 if __name__ == "__main__":
-    print(EXEC_PLATFORM)
 
     assistant_thread = threading.Thread(
         target=run_aeris, 
@@ -712,4 +733,4 @@ if __name__ == "__main__":
     )
     assistant_thread.start()
 
-    app.run(debug=True, use_reloader=True)
+    app.run(debug=False, use_reloader=True)
