@@ -31,7 +31,15 @@ from tkinter import Tk, filedialog
 from typing import Literal, Callable
 
 EXEC_PLATFORM = platform.system()
-USE_GOOGLE = True
+config = configparser.ConfigParser()
+config.read("config.ini")
+USE_GOOGLE = int(config['misc']['use_google'])
+FULLSCREEN = int(config['misc']['fullscreen'])
+
+# spin up ollama first, so that the reasoning portion is quicker
+command = ['ollama', 'run', '--keepalive', '10h', 'mistral']
+process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+stdout, stderr = process.communicate()
 
 if EXEC_PLATFORM == "Windows":
     import pygetwindow as gw
@@ -46,7 +54,7 @@ if EXEC_PLATFORM == "Windows":
 app = Flask(__name__)
 
 # Width ratios for each panel (default: equal)
-width_ratios = [1, 1, 1]  # Can be adjusted dynamically if needed
+width_ratios = [1, 1, 1, 1]  # Can be adjusted dynamically if needed
 canvas_width = 3064
 canvas_height = 672
 
@@ -220,7 +228,7 @@ class CommandControl(dspy.Signature):
     pi_tech_video
     gat_video
 
-    # Valid screen number are (1,2,3). However, please map it to (0, 1, 2)
+    # Valid screen number are (1,2,3,4). However, please map it to (0, 1, 2, 3)
 
     ## Output format:
     The output should only contain the function name and positional args.
@@ -232,8 +240,8 @@ class CommandControl(dspy.Signature):
         desc="For downstream error handling or routing"
     )  # For downstream error handling or routing
 
-# Initialize 3 panels
-media_panels = [MediaPanel(i) for i in range(4)]
+# Initialize 4 panels + exp wall panel
+media_panels = [MediaPanel(i) for i in range(5)]
 experience_wall = media_panels[-1]
 
 # Background thread: single OpenCV window to display all panels
@@ -310,6 +318,8 @@ def display_loop():
         canvas = overlay_frames(panel_canvas, exp_frames)
 
         cv2.imshow("Media Dashboard", canvas)
+        if FULLSCREEN:
+            cv2.setWindowProperty('Media Dashboard', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
         # Check for 'Ctrl + Q' key press
         if cv2.waitKey(33) & 0xFF == ord('q'):
             break
@@ -463,7 +473,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             transcript = self.recognizer.recognize_google(audio)
         else:
-            transcript = self.recognizer.recognize_faster_whisper(audio)
+            transcript = self.recognizer.recognize_whisper(audio)
         self.speak("Hello, identification please")
         raise NotImplementedError
 
@@ -484,7 +494,6 @@ class VoiceAssistant:
             "hello i mean",
             "hello im reese",
             "hello ill reach",
-            "hello",  # use for testing
         ]
         while True:
             try:
@@ -492,14 +501,14 @@ class VoiceAssistant:
                 if USE_GOOGLE:
                     transcript = self.recognizer.recognize_google(audio)
                 else:
-                    transcript = self.recognizer.recognize_faster_whisper(audio)
+                    transcript = self.recognizer.recognize_whisper(audio)
 
                 if self.is_valid_command(transcript):
-                    self.log_to_memory(f"You said: {transcript}")
-                transcript = remove_punctuation(transcript)
+                    self.log_to_memory(f"You said: {transcript}", level="INFO")
+                    transcript = remove_punctuation(transcript)
 
                 if any(w.lower() in transcript.lower() for w in wake_phrases):
-                    self.log_to_memory("Wake word detected. Listening for command...")
+                    self.log_to_memory("Wake word detected. Listening for command...", level="INFO")
                     self.try_to_recognize(source)
             except sr.UnknownValueError:
                 self.log_to_memory("Didn't catch any sound.", level="INFO")
@@ -529,7 +538,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             command = self.recognizer.recognize_google(audio)
         else:
-            command = self.recognizer.recognize_faster_whisper(audio)
+            command = self.recognizer.recognize_whispher(audio)
 
         self.log_to_memory(f"Command received: {command}")
 
@@ -734,4 +743,4 @@ if __name__ == "__main__":
     )
     assistant_thread.start()
 
-    app.run(debug=False, use_reloader=True)
+    app.run(debug=False, use_reloader=False)
