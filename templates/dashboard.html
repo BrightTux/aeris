@@ -29,6 +29,15 @@
             margin-bottom: 20px;
         }
 
+        .panel-select-wrapper {
+          cursor: pointer;
+        }
+
+        .panel-checkbox:checked + .panel {
+          border: 2px solid #007bff;
+          background-color: #e9f3ff;
+        }
+
         .panel {
             background-color: var(--panel-bg-light);
             border: 1px solid var(--border-light);
@@ -137,34 +146,45 @@
         <div id="log-container">Loading logs...</div>
     </div>
 
-    {% for panel in panels %}
-    <div class="panel">
-        <h3>
-          {% if loop.index == 5 %}
-            Experience Wall
-          {% else %}
-            Panel {{ loop.index }}
-          {% endif %}
-        </h3>
-        <h4>Video Control</h4>
-        <p>Current File: </p>
-        <p><b>{{ panel.filepath if panel.filepath else "None" }}</b></p>
-        <form method="POST" action="/panel/{{ loop.index0 }}/browse">
-            <button type="submit">Browse for Video</button>
-        </form>
-        <div class="button-row">
-            <form method="POST" action="/panel/{{ loop.index0 }}/play"><button>Play</button></form>
-            <form method="POST" action="/panel/{{ loop.index0 }}/pause"><button>Pause</button></form>
-            <form method="POST" action="/panel/{{ loop.index0 }}/stop"><button>Stop</button></form>
-        </div>
+    <form method="POST" action="/bulk_action">
+      <!-- Bulk action buttons -->
+      <div class="button-row">
+        <button name="action" value="play">Play Selected</button>
+        <button name="action" value="pause">Pause Selected</button>
+        <button name="action" value="stop">Stop Selected</button>
+        <button name="action" value="clear_slides">Clear Slides</button>
+      </div>
 
-        <h4>PowerPoint Control</h4>
-        <form method="POST" action="/panel/{{ loop.index0 }}/upload_images">
-          <button type="submit">Load PowerPoint image folder</button>
-        </form>
-        <form method="POST" action="/panel/{{ loop.index0 }}/clear_slides"><button>Clear Slides</button></form>
-    </div>
-    {% endfor %}
+      {% for panel in panels %}
+      <label class="panel-select-wrapper">
+          <input type="checkbox" name="panel_ids" value="{{ loop.index0 }}" class="panel-checkbox" hidden>
+          <div class="panel">
+              <h3>
+                  {% if loop.index == 5 %}
+                    Experience Wall
+                  {% else %}
+                    Panel {{ loop.index }}
+                  {% endif %}
+                </h3>
+              <h4>Video Control</h4>
+              <p>Current File: </p>
+              <p><b>{{ panel.filepath if panel.filepath else "None" }}</b></p>
+
+              <button formaction="/panel/{{ loop.index0 }}/browse" formmethod="POST">Browse for Video</button>
+
+              <div class="button-row">
+                  <button formaction="/panel/{{ loop.index0 }}/play" formmethod="POST">Play</button>
+                  <button formaction="/panel/{{ loop.index0 }}/pause" formmethod="POST">Pause</button>
+                  <button formaction="/panel/{{ loop.index0 }}/stop" formmethod="POST">Stop</button>
+                </div>
+
+              <h4>PowerPoint Control</h4>
+              <button formaction="/panel/{{ loop.index0 }}/upload_images" formmethod="POST">Load PowerPoint image folder</button>
+              <button formaction="/panel/{{ loop.index0 }}/clear_slides" formmethod="POST">Clear Slides</button>
+            </div>
+      </label>
+      {% endfor %}
+    </form>
 
     <div class="button-row">
         <button id="toggle-dark-mode">Toggle Dark Mode</button>

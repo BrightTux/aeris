@@ -9,7 +9,7 @@ import threading
 import time
 
 from collections import deque
-from flask import Flask, render_template, redirect, url_for
+from flask import Flask, render_template, redirect, url_for, request
 from screeninfo import get_monitors
 from tkinter import Tk, filedialog
 
@@ -413,6 +413,30 @@ def control_panel(panel_id, action):
         panel.stop()
     elif action == "clear_slides":
         panel.clear_slides()
+
+    return redirect(url_for("index"))
+
+
+@app.route("/bulk_action", methods=["POST"])
+def bulk_action():
+    action = request.form.get("action")
+    panel_ids = request.form.getlist("panel_ids")  # this is a list of strings
+
+    for panel_id_str in panel_ids:
+        try:
+            panel_id = int(panel_id_str)
+            panel = media_panels[panel_id]
+            if action == "play":
+                panel.play()
+            elif action == "pause":
+                panel.pause()
+            elif action == "stop":
+                panel.stop()
+            elif action == "clear_slides":
+                panel.clear_slides()
+        except (ValueError, IndexError):
+            # Handle invalid panel ID
+            continue
 
     return redirect(url_for("index"))
 
