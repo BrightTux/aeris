@@ -1,7 +1,7 @@
 import ast
+import comtypes.client
 import configparser
 import cv2
-import comtypes.client
 import dspy
 import io
 import logging
@@ -10,16 +10,16 @@ import os
 import platform
 import pyttsx3
 import speech_recognition as sr
+import string
 import subprocess
 import tempfile
 import threading
-import traceback
 import time
-import string
+import traceback
 
 from PIL import Image, ImageDraw
-from flask import Flask, render_template, redirect, url_for
 from collections import deque
+from flask import Flask, render_template, redirect, url_for
 from pathlib import Path
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -208,6 +208,40 @@ class MediaPanel:
         self.slide_index = 0
         self.slide_duration = duration
         self.last_slide_time = time.time()
+
+
+class AuthorizationCheck(dspy.Signature):
+    """
+    Determine if the given authorization_code is valid based on the
+    dictated_voice_input, if the voice input matches the authorization code
+    return a welcome message or a rejection message.
+
+    Input:
+    1. dictated_voice_input
+    2. authorized code and user name dict
+
+    Output:
+    1. return_message: either welcomes the user and a message to deny user.
+    2. return_value: passed verification =
+
+    [IMPORTANT]
+    - the dictated voice input might have errors, try your best to validate it
+
+    Example:
+    Identification passed: Welcome <user_name>, how can I help you?
+    Identification failed: Authorization failed.
+    """
+
+    dictated_voice_input: str = dspy.InputField()
+    authorization_code_and_user: dict = dspy.InputField(
+        desc="A dictionary with the following format {authorization_code: user name}"
+    )
+    return_message: str = dspy.OutputField(
+        desc="Message to indicate pass or rejection of verification."
+    )
+    return_value: bool = dspy.OutputField(
+        desc="Return True if verification passed, False otherwise."
+    )
 
 
 class CommandControl(dspy.Signature):
@@ -442,6 +476,7 @@ class VoiceAssistant:
         )
         dspy.configure(lm=self.lm)
         self.get_command_actions = dspy.ChainOfThought(CommandControl)
+        self.authorization_check = dspy.ChainOfThought(AuthorizationCheck)
 
         # voice engine
         self.voice_engine = pyttsx3.init("sapi5")
@@ -488,20 +523,28 @@ class VoiceAssistant:
             print(traceback.print_exc())
 
     def verify_user(self, source):
-        return True
+        if not int(self.config["misc"]["use_authorization"]):
+            return True
+
+        self.speak("Hello, please provide identification code.")
         audio = self.recognizer.listen(source)
         if USE_GOOGLE:
             transcript = self.recognizer.recognize_google(audio)
         else:
             transcript = self.recognizer.recognize_whisper(audio)
-        self.speak("Hello, identification please")
-        raise NotImplementedError
+
+        message, value = self.authorization_check(
+            dictated_voice_input=transcript,
+            authorization_code_and_user=self.config["authorization"],
+        )
+        self.speak(message)
+        return value
 
     def unauthorized_access(self):
         self.speak("False identification, I do not recognize you.")
 
     def listen_for_wake_phrase(self, source):
-        self.log_to_memory(f"Listening for wake phrases")
+        self.log_to_memory("Listening for wake phrases")
         wake_phrases = [
             "hello aeries",
             "hello aries",
@@ -658,7 +701,6 @@ def convert_pptx_to_images_pure(pptx_path, width=1280, height=720) -> list[str]:
                     text = shape.text_frame.text
                     left = int(shape.left * width / prs.slide_width)
                     top = int(shape.top * height / prs.slide_height)
-                    font_size = 24
                     draw.text((left, top), text, fill="black")  # Add font if needed
 
             elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
@@ -767,7 +809,6 @@ def upload_images(panel_id):
 
 @app.route("/logs")
 def view_logs():
-    num_lines = 15
     try:
         with log_lock:
             # Get the last num_lines from memory
