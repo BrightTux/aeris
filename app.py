@@ -212,24 +212,15 @@ class MediaPanel:
 
 class AuthorizationCheck(dspy.Signature):
     """
-    Determine if the given authorization_code is valid based on the
-    dictated_voice_input, if the voice input matches the authorization code
-    return a welcome message or a rejection message.
-
+    Determine if the dictated_voice_input phonetically corresponds to an authorization code present in the authorization_code_and_user dictionary.
+    
     Input:
-    1. dictated_voice_input
-    2. authorized code and user name dict
-
+    - dictated_voice_input: a string transcribed from voice, which may contain phonetic or transcription errors.
+    - authorization_code_and_user: a dictionary with the format {authorization_code: user_name}
+    
     Output:
-    1. return_message: either welcomes the user and a message to deny user.
-    2. return_value: passed verification =
-
-    [IMPORTANT]
-    - the dictated voice input might have errors, try your best to validate it
-
-    Example:
-    Identification passed: Welcome <user_name>, how can I help you?
-    Identification failed: Authorization failed.
+    - return_message: A user-friendly message. If matched, returns "Welcome {user_name}, how can I help you?"; if no match, returns a rejection message like "Authorization failed."
+    - return_value: True if verification passed; False otherwise.
     """
 
     dictated_voice_input: str = dspy.InputField()
@@ -284,7 +275,7 @@ class CommandControl(dspy.Signature):
 
 
 # Initialize 4 panels + exp wall panel
-media_panels = [MediaPanel(panel_index=i, width=panel_widths[i]) for i in range(5)]
+media_panels = [MediaPanel(panel_id=i, width=panel_widths[i]) for i in range(5)]
 experience_wall = media_panels[-1]
 
 
@@ -606,7 +597,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             command = self.recognizer.recognize_google(audio)
         else:
-            command = self.recognizer.recognize_whispher(audio)
+            command = self.recognizer.recognize_whisper(audio)
 
         self.log_to_memory(f"Command received: {command}")
 
