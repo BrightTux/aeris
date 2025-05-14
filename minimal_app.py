@@ -1,31 +1,17 @@
-import ast
-import comtypes.client
 import configparser
 import cv2
-import dspy
-import io
 import logging
 import numpy as np
 import os
 import platform
-import pyttsx3
-import speech_recognition as sr
 import string
-import subprocess
-import tempfile
 import threading
 import time
-import traceback
 
-from PIL import Image, ImageDraw
 from collections import deque
 from flask import Flask, render_template, redirect, url_for, request
-from pathlib import Path
-from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
 from screeninfo import get_monitors
 from tkinter import Tk, filedialog
-from typing import Callable
 
 EXEC_PLATFORM = platform.system()
 config = configparser.ConfigParser()
@@ -33,10 +19,6 @@ config.read("config.ini")
 USE_GOOGLE = int(config["misc"]["use_google"])
 FULLSCREEN = int(config["misc"]["fullscreen"])
 
-# spin up ollama first, so that the reasoning portion is quicker
-command = ["ollama", "run", "--keepalive", "10h", "mistral"]
-process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-stdout, stderr = process.communicate()
 
 if EXEC_PLATFORM == "Windows":
     import pygetwindow as gw
@@ -215,70 +197,6 @@ class MediaPanel:
         self.slide_index = 0
         self.slide_duration = duration
         self.last_slide_time = time.time()
-
-
-class AuthorizationCheck(dspy.Signature):
-    """
-    Determine if the dictated_voice_input phonetically corresponds to an authorization code present in the authorization_code_and_user dictionary.
-
-    Input:
-    - dictated_voice_input: a string transcribed from voice, which may contain phonetic or transcription errors.
-    - authorization_code_and_user: a dictionary with the format {authorization_code: user_name}
-
-    Output:
-    - return_message: A user-friendly message. If matched, returns "Welcome {user_name}, how can I help you?"; if no match, returns a rejection message like "Authorization failed."
-    - return_value: True if verification passed; False otherwise.
-    """
-
-    dictated_voice_input: str = dspy.InputField()
-    authorization_code_and_user: dict = dspy.InputField(
-        desc="A dictionary with the following format {authorization_code: user name}"
-    )
-    return_message: str = dspy.OutputField(
-        desc="Message to indicate pass or rejection of verification."
-    )
-    return_value: bool = dspy.OutputField(
-        desc="Return True if verification passed, False otherwise."
-    )
-
-
-class CommandControl(dspy.Signature):
-    """Determine the command details based on the input request and intention.
-
-    Input:
-    - request: actual request from the user
-    Output:
-    # IMPORTANT:
-    # Here are the valid responses:
-    - play_video(video_name: str, screen_number :int)
-    - pause_video(screen_number: int)
-    - stop_video(screen_number: int)
-    - experience_wall_control(action: str)  # valid actions: on/off
-    - set_volume(volume_level: float)  # 0.0 to 1.0 value for volume_level
-    - system_sleep()
-
-    [PRIORITY] Try your best to match file names and screen numbers.
-    [FALLBACK] If there's no matching file names, try using similar sounding phonetics to match the valid video files names below.
-
-    # Video Controls:
-    ## Valid video files names:
-    gca_video
-    cw_aero_video
-    pi_tech_video
-    gat_video
-
-    # Valid screen number are (1,2,3,4). However, please map it to (0, 1, 2, 3)
-
-    ## Output format:
-    The output should only contain the function name and positional args.
-    """
-
-    request: str = dspy.InputField()
-
-    command: str = dspy.OutputField(desc="Actual function and parameters to run")
-    confidence: float = dspy.OutputField(
-        desc="For downstream error handling or routing"
-    )  # For downstream error handling or routing
 
 
 # Initialize 4 panels + exp wall panel
@@ -462,267 +380,6 @@ def system_sleep(*args, **kwargs):
         p.stop()
 
 
-class VoiceAssistant:
-    def __init__(self, log_to_memory, command_registry):
-        self.log_to_memory = log_to_memory
-        self.config = configparser.ConfigParser()
-        self.config.read("config.ini")
-
-        # DSPY related
-        ollama_server_url = self.config["llm"]["endpoint_prod"]
-        self.lm = dspy.LM(
-            self.config["llm"]["model"], api_base=ollama_server_url, api_key=""
-        )
-        dspy.configure(lm=self.lm)
-        self.get_command_actions = dspy.ChainOfThought(CommandControl)
-        self.authorization_check = dspy.ChainOfThought(AuthorizationCheck)
-
-        # voice engine
-        self.voice_engine = pyttsx3.init("sapi5")
-        self.voices = self.voice_engine.getProperty("voices")
-        self.voice_engine.setProperty(
-            "voice", self.voices[1].id
-        )  # changing index, changes voices. 1 for female
-
-        # dictionary of video files
-        self.video_dict = self.config["presentation"]
-        self.command_registry = command_registry
-
-        self.recognizer = sr.Recognizer()
-        self.mic_index = int(self.config["voice_control"]["mic_index"])
-
-    def speak(self, audio):
-        self.voice_engine.say(audio)
-        self.voice_engine.runAndWait()
-
-    def execute_command(self, command_str: str):
-        try:
-            # Safely parse the command string
-            tree = ast.parse(command_str, mode="eval")
-            if not isinstance(tree.body, ast.Call):
-                raise ValueError("Command must be a function call")
-
-            func_name = tree.body.func.id
-
-            args = []
-            for a in tree.body.args:
-                args.append(a.value)
-
-            kargs = {}
-            for kw in tree.body.keywords:
-                kargs[kw.arg] = ast.literal_eval(kw.value)
-
-            if func_name not in self.command_registry:
-                raise ValueError(f"Unknown command: {func_name}")
-
-            self.command_registry[func_name](*args, **kargs)
-
-        except Exception as e:
-            print(f"Failed to execute command: {e}, Received: {command_str=}")
-            self.log_to_memory(traceback.print_exc(), level="DEBUG")
-            print(traceback.print_exc())
-
-    def verify_user(self, source):
-        if not int(self.config["misc"]["use_authorization"]):
-            return True
-
-        self.speak("Hello, please provide identification code.")
-        audio = self.recognizer.listen(source)
-        if USE_GOOGLE:
-            transcript = self.recognizer.recognize_google(audio)
-        else:
-            transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
-
-        res = self.authorization_check(
-            dictated_voice_input=transcript,
-            authorization_code_and_user=self.config["authorization"],
-        )
-        message = res.return_message
-        value = res.return_value
-        self.speak(message)
-        return value
-
-    def unauthorized_access(self):
-        self.speak("False identification, I do not recognize you.")
-
-    def listen_for_wake_phrase(self, source):
-        self.log_to_memory("Listening for wake phrases")
-        wake_phrases = [
-            "hello aeries",
-            "hello aries",
-            "hello iris",
-            "hello aeris",
-            "hello i miss",
-            "hello irene",
-            "hello ivy",
-            "hello i mean",
-            "hello im reese",
-            "hello ill reach",
-            "hello elise",
-        ]
-        while True:
-            try:
-                audio = self.recognizer.listen(source)
-                if USE_GOOGLE:
-                    transcript = self.recognizer.recognize_google(audio)
-                else:
-                    transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
-
-                transcript = remove_punctuation(transcript)
-                if self.is_valid_command(transcript):
-                    self.log_to_memory(f"You said: {transcript}", level="INFO")
-
-                if any(w.lower() in transcript.lower() for w in wake_phrases):
-                    self.log_to_memory(
-                        "Wake word detected. Listening for command...", level="INFO"
-                    )
-                    self.try_to_recognize(source)
-            except sr.UnknownValueError:
-                self.log_to_memory("Didn't catch any sound.", level="INFO")
-            except sr.RequestError as e:
-                self.log_to_memory(f"Recognition error: {e}", level="ERROR")
-                self.speak("Recognition error.")
-                print(traceback.print_exc())
-            except Exception as e:
-                self.log_to_memory(f"Unhandled error: {e}", level="ERROR")
-                self.log_to_memory(traceback.print_exc(), level="DEBUG")
-
-    def is_valid_command(self, message):
-        """Check if the log message is valid."""
-        return message and message.strip() not in ["", "...", "... ... ... ..."]
-
-    def try_to_recognize(self, source, repeated=False):
-        self.recognizer.adjust_for_ambient_noise(source, duration=1)
-        self.recognizer.pause_threshold = (
-            2  # add some extra time to allow brain to process more
-        )
-        if not self.verify_user(source):
-            return
-
-        if not repeated:
-            self.speak("Hello, you have called for me. How can i help you?")
-
-        self.log_to_memory("You may speak your command now.")
-        audio = self.recognizer.listen(
-            source,
-        )
-        if USE_GOOGLE:
-            command = self.recognizer.recognize_google(audio)
-        else:
-            command = self.recognizer.recognize_whisper(audio, model='medium.en')
-
-        self.log_to_memory(f"Command received: {command}")
-
-        if self.is_valid_command(command):
-            command_res = self.get_command_actions(
-                request=command,
-            )
-            if command_res.confidence <= float(
-                self.config["voice_control"]["confidence"]
-            ):
-                self.speak("I'm sorry, could you repeat please?")
-                self.try_to_recognize(source, repeated=True)
-
-            self.speak(f"Okay running: {command}")
-            self.log_to_memory(f"Generated command: {command_res}")
-            # if it passes the conf threshold
-            self.execute_command(command_res.command)
-
-        self.recognizer.pause_threshold = 0.8  # reset to default
-
-    def run(self):
-        try:
-            with sr.Microphone(device_index=self.mic_index) as source:
-                self.log_to_memory("Calibrating for ambient noise...")
-                self.recognizer.adjust_for_ambient_noise(source, duration=2)
-                self.log_to_memory("Always listening for wake word...")
-                self.listen_for_wake_phrase(source)
-        except Exception as mic_error:
-            self.log_to_memory(
-                f"Microphone initialization failed: {mic_error}", level="ERROR"
-            )
-            self.log_to_memory(traceback.print_exc(), level="DEBUG")
-
-
-def run_aeris():
-    log_to_memory("")
-    log_to_memory(" ---------------- ")
-    log_to_memory(" STARTING AERIS SERVICE")
-    log_to_memory(" ---------------- ")
-    log_to_memory("")
-
-    for index, name in enumerate(sr.Microphone.list_microphone_names()):
-        print(f"Microphone {index}: {name}")
-
-    # if mic_index is None:
-    #     mic_index = input("Which mic would you like to use? :") or 8
-    #     mic_index = int(mic_index)
-    #
-    command_registry: dict[str, Callable] = {
-        "play_video": play_video,
-        "pause_video": pause_video,
-        "stop_video": stop_video,
-        "experience_wall_control": experience_wall_control,
-        "set_volume": set_volume,
-        "system_sleep": system_sleep,
-    }
-
-    aeris = VoiceAssistant(
-        log_to_memory=log_to_memory, command_registry=command_registry
-    )
-    aeris.run()
-
-
-# if there's powerpoint slide
-def convert_pptx_to_images(pptx_path: str) -> list[str]:
-    output_dir = Path(tempfile.mkdtemp())
-    ppt = comtypes.client.CreateObject("PowerPoint.Application")
-    ppt.Visible = 1
-    presentation = ppt.Presentations.Open(pptx_path, WithWindow=False)
-
-    export_path = str(output_dir / "slide")
-    presentation.SaveAs(export_path, 17)  # 17 = ppSaveAsJPG
-    presentation.Close()
-    ppt.Quit()
-
-    # Collect all slide image paths
-    slide_images = sorted(output_dir.glob("*.JPG"))
-    return [str(p) for p in slide_images]
-
-
-def convert_pptx_to_images_pure(pptx_path, width=1280, height=720) -> list[str]:
-    prs = Presentation(pptx_path)
-    output_dir = Path(tempfile.mkdtemp())
-
-    slide_images = []
-    for idx, slide in enumerate(prs.slides):
-        img = Image.new("RGB", (width, height), "white")
-        draw = ImageDraw.Draw(img)
-
-        for shape in slide.shapes:
-            if shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX or shape.has_text_frame:
-                if shape.text_frame:
-                    text = shape.text_frame.text
-                    left = int(shape.left * width / prs.slide_width)
-                    top = int(shape.top * height / prs.slide_height)
-                    draw.text((left, top), text, fill="black")  # Add font if needed
-
-            elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                img_stream = shape.image.blob
-                with Image.open(io.BytesIO(img_stream)) as shape_img:
-                    shape_img = shape_img.convert("RGB")
-                    shape_img = shape_img.resize(
-                        (shape.width // 9525, shape.height // 9525)
-                    )
-                    img.paste(shape_img, (shape.left // 9525, shape.top // 9525))
-
-        image_path = output_dir / f"slide_{idx + 1}.jpg"
-        img.save(image_path)
-        slide_images.append(str(image_path))
-
-    return slide_images
-
-
 @app.route("/")
 def index():
     config = configparser.ConfigParser()
@@ -784,25 +441,6 @@ def bulk_action():
     return redirect(url_for("index"))
 
 
-@app.route("/panel/<int:panel_id>/upload_pptx", methods=["POST"])
-def upload_pptx(panel_id):
-    root = Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-
-    file_path = filedialog.askopenfilename(filetypes=[("PowerPoint files", "*.pptx")])
-    root.destroy()
-
-    if file_path:
-        # slide_images = convert_pptx_to_images_pure(file_path)
-        slide_images = convert_pptx_to_images(file_path)
-        media_panels[panel_id].set_slides(
-            slide_images, duration=5
-        )  # set default time here
-
-    return redirect(url_for("index"))
-
-
 @app.route("/panel/<int:panel_id>/upload_images", methods=["POST"])
 def upload_images(panel_id):
     root = Tk()
@@ -851,10 +489,4 @@ def view_logs():
 
 
 if __name__ == "__main__":
-    assistant_thread = threading.Thread(
-        target=run_aeris,
-        daemon=True,
-    )
-    assistant_thread.start()
-
     app.run(debug=False, use_reloader=False)
