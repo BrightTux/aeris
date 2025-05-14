@@ -511,6 +511,7 @@ class VoiceAssistant:
 
         except Exception as e:
             print(f"Failed to execute command: {e}, Received: {command_str=}")
+            self.log_to_memory(traceback.print_exc(), level="DEBUG")
             print(traceback.print_exc())
 
     def verify_user(self, source):
@@ -522,12 +523,14 @@ class VoiceAssistant:
         if USE_GOOGLE:
             transcript = self.recognizer.recognize_google(audio)
         else:
-            transcript = self.recognizer.recognize_whisper(audio)
+            transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
 
-        message, value = self.authorization_check(
+        res = self.authorization_check(
             dictated_voice_input=transcript,
             authorization_code_and_user=self.config["authorization"],
         )
+        message = res.return_message
+        value = res.return_value
         self.speak(message)
         return value
 
@@ -547,6 +550,7 @@ class VoiceAssistant:
             "hello i mean",
             "hello im reese",
             "hello ill reach",
+            "hello elise",
         ]
         while True:
             try:
@@ -554,11 +558,11 @@ class VoiceAssistant:
                 if USE_GOOGLE:
                     transcript = self.recognizer.recognize_google(audio)
                 else:
-                    transcript = self.recognizer.recognize_whisper(audio)
+                    transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
 
+                transcript = remove_punctuation(transcript)
                 if self.is_valid_command(transcript):
                     self.log_to_memory(f"You said: {transcript}", level="INFO")
-                    transcript = remove_punctuation(transcript)
 
                 if any(w.lower() in transcript.lower() for w in wake_phrases):
                     self.log_to_memory(
@@ -570,9 +574,10 @@ class VoiceAssistant:
             except sr.RequestError as e:
                 self.log_to_memory(f"Recognition error: {e}", level="ERROR")
                 self.speak("Recognition error.")
+                print(traceback.print_exc())
             except Exception as e:
                 self.log_to_memory(f"Unhandled error: {e}", level="ERROR")
-                raise e
+                self.log_to_memory(traceback.print_exc(), level="DEBUG")
 
     def is_valid_command(self, message):
         """Check if the log message is valid."""
@@ -584,7 +589,6 @@ class VoiceAssistant:
             2  # add some extra time to allow brain to process more
         )
         if not self.verify_user(source):
-            self.unauthorized_access()
             return
 
         if not repeated:
@@ -597,7 +601,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             command = self.recognizer.recognize_google(audio)
         else:
-            command = self.recognizer.recognize_whisper(audio)
+            command = self.recognizer.recognize_whisper(audio, model='medium.en')
 
         self.log_to_memory(f"Command received: {command}")
 
@@ -629,6 +633,7 @@ class VoiceAssistant:
             self.log_to_memory(
                 f"Microphone initialization failed: {mic_error}", level="ERROR"
             )
+            self.log_to_memory(traceback.print_exc(), level="DEBUG")
 
 
 def run_aeris():
