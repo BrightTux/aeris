@@ -1,24 +1,35 @@
 import configparser
 import cv2
+import copy
+import io
 import logging
 import numpy as np
 import os
 import platform
+import random
 import string
+import subprocess
+import tempfile
 import threading
 import time
+import traceback
 
+from PIL import Image, ImageDraw
 from collections import deque
 from flask import Flask, render_template, redirect, url_for, request
+from pathlib import Path
+from pptx import Presentation
+from pptx.enum.shapes import MSO_SHAPE_TYPE
 from screeninfo import get_monitors
 from tkinter import Tk, filedialog
+from typing import Callable
 
 EXEC_PLATFORM = platform.system()
 config = configparser.ConfigParser()
 config.read("config.ini")
 USE_GOOGLE = int(config["misc"]["use_google"])
 FULLSCREEN = int(config["misc"]["fullscreen"])
-
+DEBUG_TEST = False
 
 if EXEC_PLATFORM == "Windows":
     import pygetwindow as gw
@@ -85,7 +96,7 @@ class MediaPanel:
         self.cap = None
         self.playing = False
         self.video_paused = False
-        self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
+        self.frame = np.zeros((canvas_height, width, 3), dtype=np.uint8)
         self.width = width
         self.lock = threading.Lock()
 
@@ -103,12 +114,13 @@ class MediaPanel:
             self.cap = cv2.VideoCapture(path)
             self.playing = False
             self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.wait_time = int(1 / self.fps)  # count time in seconds
+            self.wait_time = 1.0 / self.fps  # count time in seconds
             self.last_read_time = 0
 
     def play(self):
         with self.lock:
             self.playing = True
+            self.video_paused = False
 
     def pause(self):
         with self.lock:
@@ -118,8 +130,8 @@ class MediaPanel:
     def stop(self):
         with self.lock:
             self.playing = False
-            width = self.width or 1
-            self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
+            self.video_paused = False
+            self.frame = None
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -141,25 +153,26 @@ class MediaPanel:
 
                     # Load current and next images
                     current_img = cv2.imread(self.slides[self.slide_index])
-                    next_img = cv2.imread(self.slides[next_slide_index])
+                    # next_img = cv2.imread(self.slides[next_slide_index])
 
                     # Convert images to BGRA
-                    current_rgba = cv2.cvtColor(current_img, cv2.COLOR_BGR2BGRA)
-                    next_rgba = cv2.cvtColor(next_img, cv2.COLOR_BGR2BGRA)
+                    # current_rgba = cv2.cvtColor(current_img, cv2.COLOR_BGR2BGRA)
+                    # next_rgba = cv2.cvtColor(next_img, cv2.COLOR_BGR2BGRA)
 
                     # Resize images to fit the canvas
-                    current_rgba = cv2.resize(current_rgba, (self.width, canvas_height))
-                    next_rgba = cv2.resize(next_rgba, (self.width, canvas_height))
+                    current_rgba = cv2.resize(current_img, (self.width, canvas_height))
+                    # next_rgba = cv2.resize(next_rgba, (self.width, canvas_height))
 
                     # Fade out current image and fade in next image
-                    for alpha in np.linspace(
-                        1, 0, int(self.fade_duration * 30)
-                    ):  # Assuming 30 FPS
-                        # Create a blended image
-                        blended = cv2.addWeighted(
-                            current_rgba, alpha, next_rgba, 1 - alpha, 0
-                        )
-                        self.frame = blended
+                    #for alpha in np.linspace(
+                    #    1, 0, int(self.fade_duration * 30)
+                    #):  # Assuming 30 FPS
+                    #    # Create a blended image
+                    #    blended = cv2.addWeighted(
+                    #        current_rgba, alpha, next_rgba, 1 - alpha, 0
+                    #    )
+                    #    self.frame = blended
+                    self.frame = current_rgba
 
                     # Update slide index after the transition
                     self.slide_index = next_slide_index
@@ -167,8 +180,8 @@ class MediaPanel:
                 else:
                     # Display the current slide
                     img = cv2.imread(self.slides[self.slide_index])
-                    rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-                    self.frame = cv2.resize(rgba_image, (self.width, canvas_height))
+                    # rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                    self.frame = cv2.resize(img, (self.width, canvas_height))
 
             elif self.playing and self.cap and self.cap.isOpened():
                 current_time = time.time() - start_time
@@ -178,25 +191,30 @@ class MediaPanel:
                         # if finish playing, loop it
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         ret, frame = self.cap.read()
+                        self.last_read_time = current_time
                     if ret:
-                        rgba_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-                        rgba_frame = cv2.resize(rgba_frame, (self.width, canvas_height))
-                        self.frame = rgba_frame
+                        if (
+                            frame.shape[1] != self.width
+                            or frame.shape[0] != canvas_height
+                        ):
+                            frame = cv2.resize(frame, (self.width, canvas_height))
+                        self.frame = frame
+                        self.last_read_time = current_time
                     else:
-                        self.frame = np.zeros(
-                            (canvas_height, self.width, 4), dtype=np.uint8
-                        )
-                self.last_read_time = current_time
+                        self.frame = None
+
             elif self.video_paused:
                 self.frame = self.frame
+
             else:
-                self.frame = np.zeros((canvas_height, self.width, 4), dtype=np.uint8)
+                self.frame = None
 
     def set_slides(self, image_paths, duration=5):
         self.slides = image_paths
         self.slide_index = 0
         self.slide_duration = duration
         self.last_slide_time = time.time()
+
 
 
 # Initialize 4 panels + exp wall panel
@@ -267,19 +285,25 @@ def display_loop():
         # first, we fill it with the experience wall content
         experience_wall.update_frame(start_time)
         exp_frames = experience_wall.frame
-
-        frames = []
-        for i, panel in enumerate(media_panels[:-1]):
-            panel.update_frame(start_time)
-            frames.append(panel.frame)
-        panel_canvas = np.hstack(frames)
+        if exp_frames is None:
+            exp_frames = np.zeros(
+                (canvas_height, experience_wall.width, 3), dtype=np.uint8
+            )
+        backup_frame = copy.deepcopy(exp_frames)
 
         # just to make sure the frames are same size
-        panel_canvas = cv2.resize(panel_canvas, (canvas_width, canvas_height))
-        exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
-        canvas = overlay_frames(panel_canvas, exp_frames)
+        if exp_frames.shape[1] != canvas_width or exp_frames.shape[0] != canvas_height:
+            exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
 
-        cv2.imshow("Media Dashboard", canvas)
+        for i, panel in enumerate(media_panels[:-1]):
+            x_start = i * panel.width
+            x_end = x_start + panel.width
+
+            panel.update_frame(start_time)
+            if panel.frame is not None:
+                exp_frames[:, x_start:x_end] = panel.frame
+
+        cv2.imshow("Media Dashboard", exp_frames)
         if FULLSCREEN:
             cv2.setWindowProperty(
                 "Media Dashboard", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
@@ -288,7 +312,6 @@ def display_loop():
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
     cv2.destroyAllWindows()
-
 
 threading.Thread(target=display_loop, daemon=True).start()
 
@@ -309,10 +332,6 @@ def log_function_call(func):
 
     return wrapper
 
-
-def remove_punctuation(text):
-    translator = str.maketrans("", "", string.punctuation)
-    return text.translate(translator)
 
 
 @log_function_call
@@ -346,6 +365,14 @@ def stop_video(panel_index=0, *args, **kwargs):
             p.stop()
     else:
         media_panels[panel_index].stop()
+        if panel_index == -1:
+            return
+        exp_wall_paused = media_panels[-1].video_paused
+        if exp_wall_paused:
+            print('was it paused?')
+            media_panels[-1].play()
+            time.sleep(0.1)
+            media_panels[-1].pause()
 
 
 def experience_wall_control(action, *args, **kwargs):
@@ -380,6 +407,56 @@ def system_sleep(*args, **kwargs):
         p.stop()
 
 
+# if there's powerpoint slide
+def convert_pptx_to_images(pptx_path: str) -> list[str]:
+    output_dir = Path(tempfile.mkdtemp())
+    ppt = comtypes.client.CreateObject("PowerPoint.Application")
+    ppt.Visible = 1
+    presentation = ppt.Presentations.Open(pptx_path, WithWindow=False)
+
+    export_path = str(output_dir / "slide")
+    presentation.SaveAs(export_path, 17)  # 17 = ppSaveAsJPG
+    presentation.Close()
+    ppt.Quit()
+
+    # Collect all slide image paths
+    slide_images = sorted(output_dir.glob("*.JPG"))
+    return [str(p) for p in slide_images]
+
+
+def convert_pptx_to_images_pure(pptx_path, width=1280, height=720) -> list[str]:
+    prs = Presentation(pptx_path)
+    output_dir = Path(tempfile.mkdtemp())
+
+    slide_images = []
+    for idx, slide in enumerate(prs.slides):
+        img = Image.new("RGB", (width, height), "white")
+        draw = ImageDraw.Draw(img)
+
+        for shape in slide.shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.TEXT_BOX or shape.has_text_frame:
+                if shape.text_frame:
+                    text = shape.text_frame.text
+                    left = int(shape.left * width / prs.slide_width)
+                    top = int(shape.top * height / prs.slide_height)
+                    draw.text((left, top), text, fill="black")  # Add font if needed
+
+            elif shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                img_stream = shape.image.blob
+                with Image.open(io.BytesIO(img_stream)) as shape_img:
+                    shape_img = shape_img.convert("RGB")
+                    shape_img = shape_img.resize(
+                        (shape.width // 9525, shape.height // 9525)
+                    )
+                    img.paste(shape_img, (shape.left // 9525, shape.top // 9525))
+
+        image_path = output_dir / f"slide_{idx + 1}.jpg"
+        img.save(image_path)
+        slide_images.append(str(image_path))
+
+    return slide_images
+
+
 @app.route("/")
 def index():
     config = configparser.ConfigParser()
@@ -407,10 +484,20 @@ def control_panel(panel_id, action):
     panel = media_panels[panel_id]
     if action == "play":
         panel.play()
+        panel.video_paused = False
     elif action == "pause":
         panel.pause()
     elif action == "stop":
         panel.stop()
+        if panel == media_panels[-1]:
+            return redirect(url_for("index"))
+        print('debug:' ,media_panels[-1].video_paused)
+        exp_wall_paused = media_panels[-1].video_paused
+        if exp_wall_paused:
+            print('was it paused?')
+            media_panels[-1].play()
+            time.sleep(0.1)
+            media_panels[-1].pause()
     elif action == "clear_slides":
         panel.clear_slides()
 
@@ -437,6 +524,25 @@ def bulk_action():
         except (ValueError, IndexError):
             # Handle invalid panel ID
             continue
+
+    return redirect(url_for("index"))
+
+
+@app.route("/panel/<int:panel_id>/upload_pptx", methods=["POST"])
+def upload_pptx(panel_id):
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    file_path = filedialog.askopenfilename(filetypes=[("PowerPoint files", "*.pptx")])
+    root.destroy()
+
+    if file_path:
+        # slide_images = convert_pptx_to_images_pure(file_path)
+        slide_images = convert_pptx_to_images(file_path)
+        media_panels[panel_id].set_slides(
+            slide_images, duration=5
+        )  # set default time here
 
     return redirect(url_for("index"))
 
@@ -489,4 +595,5 @@ def view_logs():
 
 
 if __name__ == "__main__":
+
     app.run(debug=False, use_reloader=False)

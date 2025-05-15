@@ -153,6 +153,7 @@ class MediaPanel:
     def play(self):
         with self.lock:
             self.playing = True
+            self.video_paused = False
 
     def pause(self):
         with self.lock:
@@ -162,6 +163,7 @@ class MediaPanel:
     def stop(self):
         with self.lock:
             self.playing = False
+            self.video_paused = False
             self.frame = None
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -485,10 +487,13 @@ def stop_video(panel_index=0, *args, **kwargs):
             p.stop()
     else:
         media_panels[panel_index].stop()
+        if panel_index == -1:
+            return
         exp_wall_paused = media_panels[-1].video_paused
         if exp_wall_paused:
+            print('was it paused?')
             media_panels[-1].play()
-            time.sleep(0.2)
+            time.sleep(0.1)
             media_panels[-1].pause()
 
 
@@ -826,14 +831,18 @@ def control_panel(panel_id, action):
     panel = media_panels[panel_id]
     if action == "play":
         panel.play()
+        panel.video_paused = False
     elif action == "pause":
         panel.pause()
     elif action == "stop":
         panel.stop()
+        if panel == media_panels[-1]:
+            return redirect(url_for("index"))
         exp_wall_paused = media_panels[-1].video_paused
         if exp_wall_paused:
+            print('was it paused?')
             media_panels[-1].play()
-            time.sleep(0.2)
+            time.sleep(0.1)
             media_panels[-1].pause()
     elif action == "clear_slides":
         panel.clear_slides()
