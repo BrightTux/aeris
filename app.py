@@ -197,18 +197,21 @@ class MediaPanel:
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         ret, frame = self.cap.read()
                     if ret:
-                        rgba_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2BGRA)
-                        rgba_frame = cv2.resize(rgba_frame, (self.width, canvas_height))
-                        self.frame = rgba_frame
+                        if (
+                            frame.shape[1] != self.width
+                            or frame.shape[0] != canvas_height
+                        ):
+                            frame = cv2.resize(frame, (self.width, canvas_height))
+                        self.frame = frame
                     else:
-                        self.frame = np.zeros(
-                            (canvas_height, self.width, 4), dtype=np.uint8
-                        )
+                        self.frame = None
                 self.last_read_time = current_time
+
             elif self.video_paused:
                 self.frame = self.frame
+
             else:
-                self.frame = np.zeros((canvas_height, self.width, 4), dtype=np.uint8)
+                self.frame = None
 
     def set_slides(self, image_paths, duration=5):
         self.slides = image_paths
@@ -345,30 +348,46 @@ def display_loop():
         return combined_frame
 
     start_time = time.time()
+    is_fullscreen = False
     while True:
         # first, we fill it with the experience wall content
         experience_wall.update_frame(start_time)
         exp_frames = experience_wall.frame
-
-        frames = []
-        for i, panel in enumerate(media_panels[:-1]):
-            panel.update_frame(start_time)
-            frames.append(panel.frame)
-        panel_canvas = np.hstack(frames)
-
         # just to make sure the frames are same size
-        panel_canvas = cv2.resize(panel_canvas, (canvas_width, canvas_height))
-        exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
-        canvas = overlay_frames(panel_canvas, exp_frames)
+        if exp_frames.shape[1] != canvas_width or exp_frames.shape[0] != canvas_height:
+            exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
 
-        cv2.imshow("Media Dashboard", canvas)
+        for i, panel in enumerate(media_panels[:-1]):
+            x_start = i * panel.width
+            x_end = x_start + panel.width
+
+            panel.update_frame(start_time)
+            if panel.frame is not None:
+                exp_frames[:, x_start:x_end] = panel.frame
+
+        window_name = "Media Dashboard"
+        cv2.imshow(window_name, exp_frames)
         if FULLSCREEN:
             cv2.setWindowProperty(
-                "Media Dashboard", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
+                window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
             )
-        # Check for 'Ctrl + Q' key press
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+            is_fullscreen = True
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("f"):  # Press 'f' to toggle fullscreen
+            if is_fullscreen:
+                cv2.setWindowProperty(
+                    window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL
+                )
+                is_fullscreen = False
+            else:
+                cv2.setWindowProperty(
+                    window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN
+                )
+                is_fullscreen = True
+        elif key == ord("q"):  # Press 'q' to close window
             break
+
     cv2.destroyAllWindows()
 
 
@@ -531,7 +550,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             transcript = self.recognizer.recognize_google(audio)
         else:
-            transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
+            transcript = self.recognizer.recognize_whisper(audio, model="medium.en")
 
         res = self.authorization_check(
             dictated_voice_input=transcript,
@@ -566,7 +585,9 @@ class VoiceAssistant:
                 if USE_GOOGLE:
                     transcript = self.recognizer.recognize_google(audio)
                 else:
-                    transcript = self.recognizer.recognize_whisper(audio, model='medium.en')
+                    transcript = self.recognizer.recognize_whisper(
+                        audio, model="medium.en"
+                    )
 
                 transcript = remove_punctuation(transcript)
                 if self.is_valid_command(transcript):
@@ -609,7 +630,7 @@ class VoiceAssistant:
         if USE_GOOGLE:
             command = self.recognizer.recognize_google(audio)
         else:
-            command = self.recognizer.recognize_whisper(audio, model='medium.en')
+            command = self.recognizer.recognize_whisper(audio, model="medium.en")
 
         self.log_to_memory(f"Command received: {command}")
 
