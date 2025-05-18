@@ -10,6 +10,7 @@ import os
 import platform
 import pyttsx3
 import speech_recognition as sr
+import random
 import string
 import subprocess
 import tempfile
@@ -32,8 +33,10 @@ config = configparser.ConfigParser()
 config.read("config.ini")
 USE_GOOGLE = int(config["misc"]["use_google"])
 FULLSCREEN = int(config["misc"]["fullscreen"])
+DEBUG_TEST = False
 
 # spin up ollama first, so that the reasoning portion is quicker
+os.environ["OLLAMA_USE_CUDA"] = "1"
 command = ["ollama", "run", "--keepalive", "10h", "mistral"]
 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 stdout, stderr = process.communicate()
@@ -63,6 +66,29 @@ log_lock = threading.Lock()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 voice_logger = logging.getLogger("voice_assistant")
+
+# Sample codes for testing
+random_commands = [
+    "Can you play the GCA video on screen one?",
+    "Turn on the experience wall, please.",
+    "I'd like to stop the video that's playing on screen four.",
+    "Hey, pause whatever is running on screen two.",
+    "Can you start the pi tech video on screen three?",
+    "Shut off the experience wall now.",
+    "Play the aero video on the second screen.",
+    "Lower the volume to about 30%.",
+    "I'd like to see the GAT video on screen 4.",
+    "Can you play the GAT video on screen 3?",
+    "Could you queue up the pi tech one on screen number two?",
+    "Pause the video on screen three, please.",
+    "Start playing the GAT video on screen 1.",
+    "Let’s watch cw aero on screen four.",
+    "Turn off the wall display thing.",
+    "Can you raise the volume to like 80%?",
+    "Stop whatever’s on screen two.",
+    "Play the GCA clip on the third screen.",
+    "I'd like to see the tech video on screen 1 — the pi one.",
+]
 
 
 def format_log_message(level, message):
@@ -103,7 +129,7 @@ class MediaPanel:
         self.cap = None
         self.playing = False
         self.video_paused = False
-        self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
+        self.frame = np.zeros((canvas_height, width, 3), dtype=np.uint8)
         self.width = width
         self.lock = threading.Lock()
 
@@ -121,12 +147,13 @@ class MediaPanel:
             self.cap = cv2.VideoCapture(path)
             self.playing = False
             self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.wait_time = int(1 / self.fps)  # count time in seconds
+            self.wait_time = 1.0 / self.fps  # count time in seconds
             self.last_read_time = 0
 
     def play(self):
         with self.lock:
             self.playing = True
+            self.video_paused = False
 
     def pause(self):
         with self.lock:
@@ -136,8 +163,8 @@ class MediaPanel:
     def stop(self):
         with self.lock:
             self.playing = False
-            width = self.width or 1
-            self.frame = np.zeros((canvas_height, width, 4), dtype=np.uint8)
+            self.video_paused = False
+            self.frame = None
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -159,25 +186,26 @@ class MediaPanel:
 
                     # Load current and next images
                     current_img = cv2.imread(self.slides[self.slide_index])
-                    next_img = cv2.imread(self.slides[next_slide_index])
+                    # next_img = cv2.imread(self.slides[next_slide_index])
 
                     # Convert images to BGRA
-                    current_rgba = cv2.cvtColor(current_img, cv2.COLOR_BGR2BGRA)
-                    next_rgba = cv2.cvtColor(next_img, cv2.COLOR_BGR2BGRA)
+                    # current_rgba = cv2.cvtColor(current_img, cv2.COLOR_BGR2BGRA)
+                    # next_rgba = cv2.cvtColor(next_img, cv2.COLOR_BGR2BGRA)
 
                     # Resize images to fit the canvas
-                    current_rgba = cv2.resize(current_rgba, (self.width, canvas_height))
-                    next_rgba = cv2.resize(next_rgba, (self.width, canvas_height))
+                    current_rgba = cv2.resize(current_img, (self.width, canvas_height))
+                    # next_rgba = cv2.resize(next_rgba, (self.width, canvas_height))
 
                     # Fade out current image and fade in next image
-                    for alpha in np.linspace(
-                        1, 0, int(self.fade_duration * 30)
-                    ):  # Assuming 30 FPS
-                        # Create a blended image
-                        blended = cv2.addWeighted(
-                            current_rgba, alpha, next_rgba, 1 - alpha, 0
-                        )
-                        self.frame = blended
+                    # for alpha in np.linspace(
+                    #    1, 0, int(self.fade_duration * 30)
+                    # ):  # Assuming 30 FPS
+                    #    # Create a blended image
+                    #    blended = cv2.addWeighted(
+                    #        current_rgba, alpha, next_rgba, 1 - alpha, 0
+                    #    )
+                    #    self.frame = blended
+                    self.frame = current_rgba
 
                     # Update slide index after the transition
                     self.slide_index = next_slide_index
@@ -185,8 +213,8 @@ class MediaPanel:
                 else:
                     # Display the current slide
                     img = cv2.imread(self.slides[self.slide_index])
-                    rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
-                    self.frame = cv2.resize(rgba_image, (self.width, canvas_height))
+                    # rgba_image = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+                    self.frame = cv2.resize(img, (self.width, canvas_height))
 
             elif self.playing and self.cap and self.cap.isOpened():
                 current_time = time.time() - start_time
@@ -196,6 +224,7 @@ class MediaPanel:
                         # if finish playing, loop it
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         ret, frame = self.cap.read()
+                        self.last_read_time = current_time
                     if ret:
                         if (
                             frame.shape[1] != self.width
@@ -205,8 +234,7 @@ class MediaPanel:
                         self.frame = frame
                     else:
                         self.frame = None
-                self.last_read_time = current_time
-
+                        self.last_read_time = current_time
             elif self.video_paused:
                 self.frame = self.frame
 
@@ -222,26 +250,48 @@ class MediaPanel:
 
 class AuthorizationCheck(dspy.Signature):
     """
-    Determine if the dictated_voice_input phonetically corresponds to an authorization code present in the authorization_code_and_user dictionary.
+    Determine if the dictated_voice_input contains or phonetically resembles an authorization code from the authorization_code_and_user dictionary.
+
+    - Match is based only on the authorization code (e.g., 'E0002'), not the user name.
+    - The voice input may include extra words or phrases, and may contain phonetic or transcription errors (e.g., "oh" for "0", "too" for "2", etc.).
 
     Input:
-    - dictated_voice_input: a string transcribed from voice, which may contain phonetic or transcription errors.
-    - authorization_code_and_user: a dictionary with the format {authorization_code: user_name}
+    - dictated_voice_input (str): A spoken/transcribed phrase which may loosely mention an authorization code (e.g., "Hi, I am E zero zero zero two").
+    - authorization_code_and_user (dict): A mapping of known authorization codes to user names, e.g., {'E0002': 'Mr Benjamin'}.
 
     Output:
-    - return_message: A user-friendly message. If matched, returns "Welcome {user_name}, how can I help you?"; if no match, returns a rejection message like "Authorization failed."
-    - return_value: True if verification passed; False otherwise.
+    - return_message (str):
+        If a match is found: "Welcome {user_name}, how can I help you?"
+        If no match: "Authorization failed."
+    - return_value (bool): True if a valid authorization code was found in the input; False otherwise.
+
+    [Matching Notes]
+    - Normalize common speech-to-text errors (e.g., "oh" → "0", "too" → "2", "won" → "1", etc.).
+    - Ignore punctuation and extra words (e.g., "Hello, I am E zero zero three" → "E0003").
+    - Use fuzzy or phonetic similarity where needed.
+
+    Example Input:
+    dictated_voice_input = "Hi, I am E zero zero two"
+    authorization_code_and_user = {
+        "E0001": "Mr Azib",
+        "E0002": "Mr Benjamin",
+        "E0003": "Mr Chan"
+    }
+
+    Expected Output:
+    return_message = "Welcome Mr Benjamin, how can I help you?"
+    return_value = True
     """
 
     dictated_voice_input: str = dspy.InputField()
     authorization_code_and_user: dict = dspy.InputField(
-        desc="A dictionary with the following format {authorization_code: user name}"
+        desc="A dictionary with the format {authorization_code: user_name}"
     )
     return_message: str = dspy.OutputField(
-        desc="Message to indicate pass or rejection of verification."
+        desc="A response message indicating whether access was granted or denied."
     )
     return_value: bool = dspy.OutputField(
-        desc="Return True if verification passed, False otherwise."
+        desc="True if the voice input matched a valid authorization code; otherwise False."
     )
 
 
@@ -353,6 +403,11 @@ def display_loop():
         # first, we fill it with the experience wall content
         experience_wall.update_frame(start_time)
         exp_frames = experience_wall.frame
+        if exp_frames is None:
+            exp_frames = np.zeros(
+                (canvas_height, experience_wall.width, 3), dtype=np.uint8
+            )
+
         # just to make sure the frames are same size
         if exp_frames.shape[1] != canvas_width or exp_frames.shape[0] != canvas_height:
             exp_frames = cv2.resize(exp_frames, (canvas_width, canvas_height))
@@ -447,6 +502,14 @@ def stop_video(panel_index=0, *args, **kwargs):
             p.stop()
     else:
         media_panels[panel_index].stop()
+        if panel_index == -1:
+            return
+        exp_wall_paused = media_panels[-1].video_paused
+        if exp_wall_paused:
+            print("was it paused?")
+            media_panels[-1].play()
+            time.sleep(0.1)
+            media_panels[-1].pause()
 
 
 def experience_wall_control(action, *args, **kwargs):
@@ -495,6 +558,7 @@ class VoiceAssistant:
         dspy.configure(lm=self.lm)
         self.get_command_actions = dspy.ChainOfThought(CommandControl)
         self.authorization_check = dspy.ChainOfThought(AuthorizationCheck)
+        self.verified = False
 
         # voice engine
         self.voice_engine = pyttsx3.init("sapi5")
@@ -546,19 +610,27 @@ class VoiceAssistant:
             return True
 
         self.speak("Hello, please provide identification code.")
+        self.log_to_memory("Hello, please provide identification code.")
         audio = self.recognizer.listen(source)
         if USE_GOOGLE:
             transcript = self.recognizer.recognize_google(audio)
         else:
             transcript = self.recognizer.recognize_whisper(audio, model="medium.en")
 
+        if DEBUG_TEST:
+            transcript = "E0001"
+
+        self.log_to_memory(f"you said: {transcript}")
         res = self.authorization_check(
             dictated_voice_input=transcript,
             authorization_code_and_user=self.config["authorization"],
         )
+        self.log_to_memory(f"Authorization check results: {res}")
         message = res.return_message
         value = res.return_value
         self.speak(message)
+        if value:
+            self.verified = True
         return value
 
     def unauthorized_access(self):
@@ -590,6 +662,9 @@ class VoiceAssistant:
                     )
 
                 transcript = remove_punctuation(transcript)
+
+                if DEBUG_TEST:
+                    transcript = "hello aeris"
                 if self.is_valid_command(transcript):
                     self.log_to_memory(f"You said: {transcript}", level="INFO")
 
@@ -613,12 +688,9 @@ class VoiceAssistant:
         return message and message.strip() not in ["", "...", "... ... ... ..."]
 
     def try_to_recognize(self, source, repeated=False):
-        self.recognizer.adjust_for_ambient_noise(source, duration=1)
-        self.recognizer.pause_threshold = (
-            2  # add some extra time to allow brain to process more
-        )
-        if not self.verify_user(source):
-            return
+        if not self.verified:
+            if not self.verify_user(source):
+                return
 
         if not repeated:
             self.speak("Hello, you have called for me. How can i help you?")
@@ -631,6 +703,9 @@ class VoiceAssistant:
             command = self.recognizer.recognize_google(audio)
         else:
             command = self.recognizer.recognize_whisper(audio, model="medium.en")
+
+        if DEBUG_TEST:
+            command = random.choice(random_commands)
 
         self.log_to_memory(f"Command received: {command}")
 
@@ -649,13 +724,14 @@ class VoiceAssistant:
             # if it passes the conf threshold
             self.execute_command(command_res.command)
 
-        self.recognizer.pause_threshold = 0.8  # reset to default
-
     def run(self):
         try:
             with sr.Microphone(device_index=self.mic_index) as source:
                 self.log_to_memory("Calibrating for ambient noise...")
                 self.recognizer.adjust_for_ambient_noise(source, duration=2)
+                self.recognizer.pause_threshold = (
+                    2  # add some extra time to allow brain to process more
+                )
                 self.log_to_memory("Always listening for wake word...")
                 self.listen_for_wake_phrase(source)
         except Exception as mic_error:
@@ -771,10 +847,19 @@ def control_panel(panel_id, action):
     panel = media_panels[panel_id]
     if action == "play":
         panel.play()
+        panel.video_paused = False
     elif action == "pause":
         panel.pause()
     elif action == "stop":
         panel.stop()
+        if panel == media_panels[-1]:
+            return redirect(url_for("index"))
+        exp_wall_paused = media_panels[-1].video_paused
+        if exp_wall_paused:
+            print("was it paused?")
+            media_panels[-1].play()
+            time.sleep(0.1)
+            media_panels[-1].pause()
     elif action == "clear_slides":
         panel.clear_slides()
 
