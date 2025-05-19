@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import traceback
+import simpleaudio as sa
 
 from PIL import Image, ImageDraw
 from collections import deque
@@ -24,6 +25,7 @@ from flask import Flask, render_template, redirect, url_for, request
 from pathlib import Path
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
+from pydub import AudioSegment
 from screeninfo import get_monitors
 from tkinter import Tk, filedialog
 from typing import Callable
@@ -123,7 +125,7 @@ log_thread.start()
 
 
 class MediaPanel:
-    def __init__(self, panel_id, width):
+    def __init__(self, panel_id, width, exp_wall: bool = False):
         self.panel_id = panel_id
         self.filepath = ""
         self.cap = None
@@ -132,6 +134,10 @@ class MediaPanel:
         self.frame = np.zeros((canvas_height, width, 3), dtype=np.uint8)
         self.width = width
         self.lock = threading.Lock()
+        self.exp_wall = exp_wall
+        if self.exp_wall:
+            self.audio_cap = None
+            self.audio_play_obj = None
 
         self.slides = []
         self.slide_index = 0
@@ -149,16 +155,26 @@ class MediaPanel:
             self.fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.wait_time = 1.0 / self.fps  # count time in seconds
             self.last_read_time = 0
+            if self.exp_wall:
+                self.audio_cap = AudioSegment.from_file(path)
 
     def play(self):
         with self.lock:
             self.playing = True
             self.video_paused = False
+            try:
+                self.last_video_time_ms = self.cap.get(cv2.CAP_PROP_POS_MSEC)
+            except Exception:
+                self.last_video_time_ms = 0
+            self.play_audio_from(int(self.last_video_time_ms))
 
     def pause(self):
         with self.lock:
             self.playing = False
             self.video_paused = True
+            if self.exp_wall:
+                if self.audio_play_obj:
+                    self.audio_play_obj.stop()
 
     def stop(self):
         with self.lock:
@@ -167,10 +183,22 @@ class MediaPanel:
             self.frame = None
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            if self.exp_wall:
+                if self.audio_play_obj:
+                    self.audio_play_obj.stop()
 
     def clear_slides(self):
         with self.lock:
             self.slides = []
+
+    def play_audio_from(self, ms):
+        segment = self.audio_cap[ms:]
+        self.audio_play_obj = sa.play_buffer(
+            segment.raw_data,
+            num_channels=segment.channels,
+            bytes_per_sample=segment.sample_width,
+            sample_rate=segment.frame_rate,
+        )
 
     def update_frame(
         self,
@@ -225,6 +253,7 @@ class MediaPanel:
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         ret, frame = self.cap.read()
                         self.last_read_time = current_time
+                        self.last_video_time_ms = self.cap.get(cv2.CAP_PROP_POS_MSEC)
                     if ret:
                         if (
                             frame.shape[1] != self.width
@@ -232,11 +261,17 @@ class MediaPanel:
                         ):
                             frame = cv2.resize(frame, (self.width, canvas_height))
                         self.frame = frame
+                        self.last_read_time = current_time
+                        self.last_video_time_ms = self.cap.get(cv2.CAP_PROP_POS_MSEC)
                     else:
                         self.frame = None
                         self.last_read_time = current_time
+                        self.last_video_time_ms = self.cap.get(cv2.CAP_PROP_POS_MSEC)
+
             elif self.video_paused:
                 self.frame = self.frame
+                if self.exp_wall:
+                    self.audio_play_obj.stop()
 
             else:
                 self.frame = None
@@ -336,6 +371,7 @@ class CommandControl(dspy.Signature):
 
 # Initialize 4 panels + exp wall panel
 media_panels = [MediaPanel(panel_id=i, width=panel_widths[i]) for i in range(5)]
+media_panels[-1].exp_wall = True
 experience_wall = media_panels[-1]
 
 
