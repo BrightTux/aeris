@@ -232,6 +232,7 @@ class MediaPanel:
                         ):
                             frame = cv2.resize(frame, (self.width, canvas_height))
                         self.frame = frame
+                        self.last_read_time = current_time
                     else:
                         self.frame = None
                         self.last_read_time = current_time
