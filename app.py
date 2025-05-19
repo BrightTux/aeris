@@ -123,6 +123,31 @@ def write_logs_to_file():
 log_thread = threading.Thread(target=write_logs_to_file, daemon=True)
 log_thread.start()
 
+# audio for exp wall
+current_play_obj = None
+play_lock = threading.Lock()
+
+def play_audio_segment(video_path, ms):
+    global current_play_obj
+    with play_lock:
+        audio = AudioSegment.from_file(video_path)
+        segment = audio[:ms]
+        current_play_obj = sa.play_buffer(
+            segment.raw_data,
+            num_channels=segment.channels,
+            bytes_per_sample=segment.sample_width,
+            sample_rate=segment.frame_rate
+        )
+    current_play_obj.wait_done()
+    with play_lock:
+        current_play_obj = None
+
+def stop_audio():
+    global current_play_obj
+    with play_lock:
+        if current_play_obj and current_play_obj.is_playing():
+            current_play_obj.stop()
+            current_play_obj = None
 
 class MediaPanel:
     def __init__(self, panel_id, width, exp_wall: bool = False):
@@ -155,8 +180,6 @@ class MediaPanel:
             self.fps = self.cap.get(cv2.CAP_PROP_FPS)
             self.wait_time = 1.0 / self.fps  # count time in seconds
             self.last_read_time = 0
-            if self.exp_wall:
-                self.audio_cap = AudioSegment.from_file(path)
 
     def play(self):
         with self.lock:
@@ -166,15 +189,18 @@ class MediaPanel:
                 self.last_video_time_ms = self.cap.get(cv2.CAP_PROP_POS_MSEC)
             except Exception:
                 self.last_video_time_ms = 0
-            self.play_audio_from(int(self.last_video_time_ms))
+            if self.exp_wall:
+                threading.Thread(
+                        target=play_audio_segment, 
+                        args=(self.filepath, int(self.last_video_time_ms), ),
+                        daemon=True).start()
 
     def pause(self):
         with self.lock:
             self.playing = False
             self.video_paused = True
             if self.exp_wall:
-                if self.audio_play_obj:
-                    self.audio_play_obj.stop()
+                stop_audio()
 
     def stop(self):
         with self.lock:
@@ -184,21 +210,12 @@ class MediaPanel:
             if self.cap:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             if self.exp_wall:
-                if self.audio_play_obj:
-                    self.audio_play_obj.stop()
+                stop_audio()
 
     def clear_slides(self):
         with self.lock:
             self.slides = []
 
-    def play_audio_from(self, ms):
-        segment = self.audio_cap[ms:]
-        self.audio_play_obj = sa.play_buffer(
-            segment.raw_data,
-            num_channels=segment.channels,
-            bytes_per_sample=segment.sample_width,
-            sample_rate=segment.frame_rate,
-        )
 
     def update_frame(
         self,
@@ -270,8 +287,6 @@ class MediaPanel:
 
             elif self.video_paused:
                 self.frame = self.frame
-                if self.exp_wall:
-                    self.audio_play_obj.stop()
 
             else:
                 self.frame = None
@@ -370,8 +385,8 @@ class CommandControl(dspy.Signature):
 
 
 # Initialize 4 panels + exp wall panel
-media_panels = [MediaPanel(panel_id=i, width=panel_widths[i]) for i in range(5)]
-media_panels[-1].exp_wall = True
+bool_values = [False, False, False, False, True]
+media_panels = [MediaPanel(panel_id=i, width=panel_widths[i], exp_wall=val) for i, val in zip(range(5), bool_values)]
 experience_wall = media_panels[-1]
 
 
